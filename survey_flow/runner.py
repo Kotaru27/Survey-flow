@@ -91,7 +91,7 @@ class Runner:
             elif result.status == "stuck":
                 log.error("attempt %d -> STUCK %s", attempts, _short(result.answers))
             else:
-                log.error("attempt %d -> ERROR %s", result.message)
+                log.error("attempt %d -> ERROR %s", attempts, result.message)
 
             self.memory.save()
             if errors >= cfg.consecutive_error_limit:
