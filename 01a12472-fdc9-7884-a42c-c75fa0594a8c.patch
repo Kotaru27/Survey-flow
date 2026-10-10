@@ -1,0 +1,4326 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..abab458
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,10 @@
++.venv/
++__pycache__/
++*.py[cod]
++.pytest_cache/
++*.log
++
++# runtime artifacts
++survey_memory.json
++persona.json
++traces.jsonl
+diff --git a/.pylintrc b/.pylintrc
+new file mode 100644
+index 0000000..95b8caf
+--- /dev/null
++++ b/.pylintrc
+@@ -0,0 +1,33 @@
++[MAIN]
++jobs=1
++persistent=no
++
++[MESSAGES CONTROL]
++# Style/complexity noise is disabled; real problems (errors, unused code,
++# bad logging calls, ...) stay enabled so CI still catches them.
++disable=
++    missing-module-docstring,
++    missing-class-docstring,
++    missing-function-docstring,
++    too-few-public-methods,
++    duplicate-code,
++    too-many-branches,
++    too-many-locals,
++    too-many-return-statements,
++    too-many-instance-attributes,
++    too-many-statements,
++    too-many-nested-blocks,
++    too-many-arguments,
++    import-outside-toplevel,
++    broad-exception-caught
++
++[FORMAT]
++max-line-length=120
++
++[BASIC]
++good-names=i,j,k,n,f,e,q,s,x,_,__
++
++[TYPECHECK]
++# CI installs pylint only (GitHub starter workflow) - don't fail on
++# third-party imports that simply aren't installed in that job.
++ignored-modules=bs4,requests,pytest,lxml,playwright,urllib3
+diff --git a/README.md b/README.md
+index 5483f6a..c040087 100644
+--- a/README.md
++++ b/README.md
+@@ -1,2 +1,167 @@
+ # Survey-flow
+-Application to test the survey links
++
++Application to test Confirmit / Forsta (CF/QRE) survey links.
++
++**Rule-based, no AI.** The tool opens a survey *test link*, analyzes the HTML of
++each page, answers it, and walks the survey until **you** say how many completes
++you need. It reads the **red bold instructions** some questions carry, remembers
++any selection that ended a run (Terminate / Quota full) and avoids it in future
++runs.
++
++> Scope: this is a **survey QA tool**. Use it on TEST links with an approved test
++> persona — not to fabricate respondents in live fielding. The runner refuses URLs
++> that do not look like test links unless you pass `--allow-live`.
++
++---
++
++## How it decides an answer (priority order, pure rules)
++
++1. **Red (usually bold) instruction on the question** — parsed with pattern rules
++   (`Select: "Yes"`, `Choose option B`, `Enter: 25`, `Select Apple and Banana`, …)
++   and matched against the actual option labels. An instruction always wins.
++2. **Persona** — your `persona.json` gives consistent test answers (age, gender,
++   email, …) so a screener answer never contradicts a later one.
++3. **Memory-safe strategy** — a random / first / round-robin pick among the options
++   **not** remembered as ending a run.
++
++After a validation message appears, the message itself is parsed and the answer is
++corrected on retry (`select at least 4` → select 4, `between 18 and 25` → pick
++inside that range). Learned minimums are stored in the memory file so later runs
++don't repeat the same validation.
++
++## End statuses (kept distinct)
++
++| Status | Meaning | Remembered? |
++|---|---|---|
++| **Complete** | reached the programmed complete/thank-you page | counted towards your target |
++| **Terminate** (screened/disqualified) | failed a screener or screen-out rule | the selections on the last page are remembered and **avoided** |
++| **Quota full** | reached a full quota cell | remembered and avoided (disable with `--avoid terminate`) |
++| **Validation** | answer missing/invalid | corrected from the message, never confused with a terminate |
++
++Detection is text/URL heuristics (terminate / quota / complete phrasings), checked
++in that order because end pages often still say "Thank you".
++
++## Install
++
++```bash
++python3 -m venv .venv
++.venv/bin/pip install -r requirements.txt
++```
++
++Optional browser engine (for JS-driven pages):
++
++```bash
++.venv/bin/pip install -r requirements-browser.txt
++.venv/bin/playwright install chromium
++```
++
++## Usage
++
++```bash
++# how many completes do you need?
++.venv/bin/python -m survey_flow run 'https://your-survey-test-link...' --completes 10
++
++# deterministic option mapping (good for finding terminate points)
++.venv/bin/python -m survey_flow run URL --completes 5 --strategy round-robin
++
++# with a consistent test persona + custom memory file
++.venv/bin/python -m survey_flow run URL --completes 3 \
++    --persona persona.json --memory my_memory.json
++
++# inspect what the tool sees on a page (debugging)
++.venv/bin/python -m survey_flow analyze URL
++
++# inspect / clear what it has learned
++.venv/bin/python -m survey_flow memory show
++.venv/bin/python -m survey_flow memory clear
++
++# JS-heavy survey
++.venv/bin/python -m survey_flow run URL --completes 3 --engine browser --headed
++```
++
++Key options for `run`:
++
++| Option | Default | Purpose |
++|---|---|---|
++| `--completes N` | *required* | how many completes you need |
++| `--strategy random\|first\|round-robin` | `random` | answer choice when no red instruction exists (fatal options always excluded) |
++| `--memory PATH` | `survey_memory.json` | persistent terminate memory |
++| `--persona PATH` | – | consistent test answers (see `persona.example.json`) |
++| `--avoid terminate,quota_full` | both | which end statuses to remember & avoid |
++| `--engine http\|browser` | `http` | plain-forms engine or Playwright |
++| `--max-attempts N` | `60` | safety cap on whole runs |
++| `--seed N` | – | reproducible `random` strategy |
++| `--trace PATH` | `traces.jsonl` | every run's full answer path (QID/answers/status) for QA logs |
++| `--allow-live` | off | override the test-link guard |
++
++Exit code `0` = target reached, `2` = gave up before target, `3` = refused/misconfigured.
++
++## What the analyzer understands
++
++The question-type handling follows the CF/QRE field guide you provided:
++
++* **Single answer** (radio/buttons) and **multi answer** (checkboxes, min/max
++  selections, exclusive options)
++* **SA/MA image pickers** (behaves as radio/checkbox choices)
++* **Dropdowns** (placeholder `-- Select --` is never chosen)
++* **SA grids / Likert / rating / NPS** — one answer per required row; numeric
++  scales (0–10) matched by number
++* **Ranking** — unique positions assigned to every item
++* **Constant sum** — points distributed to hit the stated total
++* **Open text / text lists** — persona or default text, honours min/max length
++* **Open numeric / numeric grids** — generated inside min/max or `between X and Y`
++* **Date / time / slider (range)** — clamped into the allowed window
++* **Other-specify** — text box filled only when *Other* is selected
++* **Consent / eligibility checkboxes** and text-only **instruction pages**
++* **Exclusive options** (`None of these`, `Don't know`, `Prefer not to answer`, …)
++  are never mixed into a multi-select and are avoided when a minimum applies
++
++Red/bold instruction detection works off inline styles, `<font color>`, `<b>/<strong>`
++and class names — no JavaScript or AI involved.
++
++## The terminate memory
++
++`survey_memory.json` (git-ignored) stores, per stable question signature:
++
++```json
++{
++  "questions": {
++    "QuestionDIV1": {
++      "text": "Are you currently employed?",
++      "seen": 5,
++      "ends": {
++        "l:no": {"label": "No", "count": 1, "last_status": "terminate",
++                  "last_message": "you do not qualify ..."}
++      },
++      "learned": {"min_select": 4}
++    }
++  },
++  "stats": {"runs": 5, "completes": 3, "terminates": 1, "quota_full": 1}
++}
++```
++
++Options are identified by **normalized label** (not position), so answer
++randomization between sessions doesn't break the memory. If every option of a
++question eventually becomes fatal, the tool picks anyway and keeps going.
++
++## Tests
++
++```bash
++.venv/bin/python -m pytest tests/ -q
++```
++
++The suite includes an end-to-end run against a mock Confirmit-style survey
++(consent → screener terminate → red-instruction question → multi-select with
++validation → quota-full dropdown → grid → open text → complete) verifying that
++the runner reaches N completes, remembers the terminate and quota selections,
++and follows the red instructions.
++
++## Known limitations
++
++* The default `http` engine submits classic forms; if a survey is fully
++  JS-rendered, `analyze` will report an empty structure — use `--engine browser`.
++* Ranking via drag-and-drop widgets and hotspot/image-map clicks may need the
++  browser engine; custom scripted questions should be reported (QID + behaviour)
++  rather than guessed.
++* Which answer triggers a terminate is attributed to the **last page answered**
++  before the end screen (the trace file keeps the full path for review).
+diff --git a/persona.example.json b/persona.example.json
+new file mode 100644
+index 0000000..97943d6
+--- /dev/null
++++ b/persona.example.json
+@@ -0,0 +1,13 @@
++{
++  "text": "Test response",
++  "keywords": {
++    "age": 34,
++    "gender": "Male",
++    "email": "qa.test@example.com",
++    "postcode": "10001",
++    "zip": "10001",
++    "income": "50,000 - 74,999",
++    "employment": "Employed full time",
++    "children": 2
++  }
++}
+diff --git a/requirements-browser.txt b/requirements-browser.txt
+new file mode 100644
+index 0000000..6c6e4b8
+--- /dev/null
++++ b/requirements-browser.txt
+@@ -0,0 +1,4 @@
++# Optional: browser engine for JS-driven surveys.
++# After installing, run:  playwright install chromium
++-r requirements.txt
++playwright>=1.40
+diff --git a/requirements-dev.txt b/requirements-dev.txt
+new file mode 100644
+index 0000000..a266747
+--- /dev/null
++++ b/requirements-dev.txt
+@@ -0,0 +1,2 @@
++-r requirements.txt
++pytest>=8.0
+diff --git a/requirements.txt b/requirements.txt
+new file mode 100644
+index 0000000..976587b
+--- /dev/null
++++ b/requirements.txt
+@@ -0,0 +1,3 @@
++requests>=2.31
++beautifulsoup4>=4.12
++lxml>=5.0
+diff --git a/survey_flow/__init__.py b/survey_flow/__init__.py
+new file mode 100644
+index 0000000..309a63e
+--- /dev/null
++++ b/survey_flow/__init__.py
+@@ -0,0 +1,3 @@
++"""Survey-flow: rule-based (no AI) Confirmit/Forsta test-survey runner."""
++
++__version__ = "0.1.0"
+diff --git a/survey_flow/__main__.py b/survey_flow/__main__.py
+new file mode 100644
+index 0000000..dd8a8c9
+--- /dev/null
++++ b/survey_flow/__main__.py
+@@ -0,0 +1,5 @@
++import sys
++
++from .cli import main
++
++sys.exit(main())
+diff --git a/survey_flow/analyzer.py b/survey_flow/analyzer.py
+new file mode 100644
+index 0000000..66f64bd
+--- /dev/null
++++ b/survey_flow/analyzer.py
+@@ -0,0 +1,701 @@
++"""Analyze a rendered survey page into structured Questions (no AI).
++
++Strategy:
++  * collect form controls in DOM order (stable indices shared with the
++    browser engine),
++  * cluster them into questions by base field name (q3_1_2 -> q3),
++  * classify each cluster (SA/MA/dropdown/grid/ranking/scalar/...),
++  * pull out red(-and-bold) instruction texts, plain notes and validation
++    messages,
++  * classify the page outcome (question / validation / interstitial /
++    complete / terminate / quota-full).
++"""
++
++from __future__ import annotations
++
++import hashlib
++import re
++from collections import defaultdict
++from dataclasses import dataclass
++
++from bs4 import BeautifulSoup, NavigableString, Tag
++
++from .instructions import (
++    CONSENT_RE,
++    EXCLUSIVE_RE,
++    PLACEHOLDER_OPTION_RE,
++    VALIDATIONISH_RE,
++    element_color_bold,
++    norm_label,
++)
++from .models import Field, Outcome, Page, Question, SubmitControl
++from .outcomes import ERROR_ELEM_RE, classify_text, find_validation
++
++_NAME_BASE_RE = re.compile(r"(_\d+)+$")
++_QTEXT_CLASS_RE = re.compile(
++    r"(question[-_ ]?text|questiontext|prompt|qtext|survey[-_ ]?title|legend|"
++    r"question[-_ ]?header|title)",
++    re.I,
++)
++_INSTRUCTION_CLASS_RE = re.compile(r"(instruction|helper|hint|guidance|note)", re.I)
++_RANK_LABEL_RE = re.compile(r"^(rank\s*)?\d{1,2}$", re.I)
++
++_MIN_SEL_RE = re.compile(r"(?:at\s+least|minimum\s+of|min(?:imum)?\.?)\s+(\d+)", re.I)
++_MAX_SEL_RE = re.compile(r"(?:no\s+more\s+than|at\s+most|up\s+to|maximum\s+of|max(?:imum)?\.?)\s+(\d+)", re.I)
++_TOTAL_RE = re.compile(
++    r"(?:allocate|total(?:\s+of)?|add(?:\s+up)?\s+to|sum\s+to|enter\s+points?\s+totalling)"
++    r"\s+(\d{1,4})", re.I)
++_POINTS_RE = re.compile(r"\b(\d{1,4})\s*points?\b", re.I)
++
++
++# --------------------------------------------------------------------------- #
++# small HTML helpers
++# --------------------------------------------------------------------------- #
++
++def _clean_text(s: str, limit: int = 600) -> str:
++    s = re.sub(r"\s+", " ", s or "").strip()
++    return s[:limit]
++
++
++def _node_text(node) -> str:
++    if isinstance(node, NavigableString):
++        if getattr(node.parent, "name", None) in ("script", "style"):
++            return ""
++        return _clean_text(str(node))
++    if isinstance(node, Tag):
++        if node.name in ("script", "style", "input", "select", "textarea", "button"):
++            return ""
++        return _clean_text(node.get_text(" ", strip=True))
++    return ""
++
++
++def _label_map(soup: BeautifulSoup) -> dict[str, str]:
++    out = {}
++    for lab in soup.find_all("label"):
++        fid = lab.get("for")
++        if fid:
++            out[fid] = _clean_text(lab.get_text(" ", strip=True), 200)
++    return out
++
++
++def _field_label(tag: Tag, for_map: dict[str, str]) -> str:
++    # 1) wrapping <label>
++    wrap = tag.find_parent("label")
++    if wrap is not None:
++        txt = _clean_text(wrap.get_text(" ", strip=True), 200)
++        if txt:
++            return txt
++    # 2) <label for=id>
++    tid = tag.get("id")
++    if tid and tid in for_map:
++        return for_map[tid]
++    # 3) nearby sibling text (common answer patterns)
++    for sib in list(tag.next_siblings)[:4]:
++        txt = _node_text(sib)
++        if 0 < len(txt) <= 120:
++            return txt
++    # 4) sibling cell of the parent (td/row patterns)
++    parent = tag.parent
++    for _ in range(2):
++        if parent is None or not isinstance(parent, Tag):
++            break
++        for sib in list(parent.next_siblings)[:3]:
++            txt = _node_text(sib)
++            if 0 < len(txt) <= 120:
++                return txt
++        parent = parent.parent
++    # 5) aria/title/placeholder
++    for attr in ("aria-label", "title", "placeholder"):
++        v = tag.get(attr)
++        if v:
++            return _clean_text(v, 200)
++    # 6) value for buttons
++    if tag.get("value"):
++        return _clean_text(tag.get("value"), 200)
++    return ""
++
++
++def _collect_fields(soup: BeautifulSoup):
++    """Return list of (dom_index, tag, type_str)."""
++    out = []
++    for i, tag in enumerate(soup.find_all(["input", "select", "textarea"])):
++        if tag.name == "input":
++            typ = (tag.get("type") or "text").lower()
++        elif tag.name == "select":
++            typ = "select-multiple" if tag.has_attr("multiple") else "select-one"
++        else:
++            typ = "textarea"
++        out.append((i, tag, typ))
++    return out
++
++
++def _common_ancestor(tags: list[Tag]) -> Tag | None:
++    """Deepest proper ancestor shared by all tags (parent-level, so a lone
++    tag resolves to its container, not to itself)."""
++    if not tags:
++        return None
++
++    def path(t: Tag):
++        p = []
++        cur = t.parent          # proper ancestors only
++        while cur is not None:
++            p.append(cur)
++            cur = cur.parent
++        return p[::-1]
++
++    common = path(tags[0])
++    for t in tags[1:]:
++        p = path(t)
++        common = [a for a, b in zip(common, p) if a is b]
++        if not common:
++            break
++    return common[-1] if common else None
++
++
++# containers we may climb out of to reach the question wrapper
++_CLIMBABLE = {"label", "td", "th", "tr", "li", "span", "font", "b", "strong", "table", "p", "ul", "tbody", "div"}
++
++
++def _climb_to_question(nca: Tag | None, cluster_ids: set, all_field_ids: set) -> Tag | None:
++    """Climb out of option-level wrappers (labels/tds/tables) until the
++    container that holds the whole question - but never into a container
++    that holds fields from a *different* question (avoids instruction
++    bleed between questions)."""
++    guard = 0
++    while (
++        nca is not None
++        and nca.name in _CLIMBABLE
++        and nca.parent is not None
++        and nca.parent.name not in ("form", "body", "html")
++        and guard < 5
++    ):
++        parent = nca.parent
++        foreign = [
++            t for t in parent.find_all(["input", "select", "textarea"])
++            if id(t) in all_field_ids and id(t) not in cluster_ids
++        ]
++        if foreign:
++            break
++        nca = parent
++        guard += 1
++    return nca
++
++
++def _name_base(name: str) -> str:
++    return _NAME_BASE_RE.sub("", name or "")
++
++
++def _question_text(nca: Tag | None, first_tag: Tag, exclude: list[str]) -> str:
++    """Best-effort question wording for a field cluster."""
++    cands: list[str] = []
++    if nca is not None:
++        leg = nca.find("legend")
++        if leg is not None:
++            cands.append(_clean_text(leg.get_text(" ", strip=True)))
++        for t in nca.find_all(True, class_=_QTEXT_CLASS_RE):
++            cands.append(_clean_text(t.get_text(" ", strip=True)))
++            break
++        # heading tags
++        for t in nca.find_all(["h1", "h2", "h3", "h4"]):
++            cands.append(_clean_text(t.get_text(" ", strip=True)))
++            break
++
++    # walk backwards from the first field, collecting strings
++    chunks: list[str] = []
++    for node in first_tag.previous_elements:
++        if node is nca:
++            break
++        if isinstance(node, NavigableString):
++            txt = _node_text(node)
++            if txt:
++                chunks.append(txt)
++                joined = " ".join(reversed(chunks))
++                if len(joined) >= 25:
++                    break
++        elif isinstance(node, Tag):
++            if node.name in ("input", "select", "textarea"):
++                break
++            if node.name in ("form", "body"):
++                break
++    if chunks:
++        cands.append(" ".join(reversed(chunks)))
++
++    for c in cands:
++        if not c:
++            continue
++        # strip instruction/red fragments we already captured separately
++        stripped = c
++        for ex in exclude:
++            if ex and ex in stripped:
++                stripped = stripped.replace(ex, " ")
++        stripped = _clean_text(stripped)
++        if len(stripped) >= 2:
++            return stripped
++    return _clean_text(cands[0]) if cands else ""
++
++
++def _row_label(tag: Tag) -> str:
++    """Row header for a grid cell: preceding cell/sibling text."""
++    for sib in list(tag.previous_siblings)[:3]:
++        txt = _node_text(sib)
++        if 0 < len(txt) <= 120:
++            return txt
++    parent = tag.parent
++    for _ in range(2):
++        if parent is None or not isinstance(parent, Tag):
++            break
++        for sib in list(parent.previous_siblings)[:3]:
++            txt = _node_text(sib)
++            if 0 < len(txt) <= 120:
++                return txt
++        parent = parent.parent
++    return ""
++
++
++# --------------------------------------------------------------------------- #
++# instruction / validation extraction
++# --------------------------------------------------------------------------- #
++
++@dataclass
++class ExtractedTexts:
++    instructions: list[str]
++    notes: list[str]
++    validation_msgs: list[str]
++
++
++def _extract_texts(nca: Tag | None, page_scope: Tag) -> ExtractedTexts:
++    scope = nca if nca is not None else page_scope
++    instructions: list[str] = []
++    notes: list[str] = []
++    validation: list[str] = []
++    seen: set[str] = set()
++
++    candidates = scope.find_all(
++        ["b", "strong", "span", "div", "p", "em", "i", "font", "legend", "li", "td", "h1", "h2", "h3", "h4"]
++    )
++    for elem in candidates:
++        txt = _clean_text(elem.get_text(" ", strip=True), 500)
++        if not txt or len(txt) > 400:
++            continue
++        key = norm_label(txt)
++        if not key or key in seen:
++            continue
++        # never treat answer-option labels as instructions
++        if elem.find_parent("label") is not None:
++            continue
++        red, _bold = element_color_bold(elem, scope)
++        if red:
++            seen.add(key)
++            if VALIDATIONISH_RE.search(txt):
++                validation.append(txt)
++            else:
++                instructions.append(txt)
++            continue
++        # plain instruction containers (non-red) -> notes
++        classes = " ".join(elem.get("class") or []).lower()
++        if _INSTRUCTION_CLASS_RE.search(classes) and not elem.find_parent("label"):
++            seen.add(key)
++            if VALIDATIONISH_RE.search(txt):
++                validation.append(txt)
++            else:
++                notes.append(txt)
++
++    # de-duplicate nested notes: drop note fully contained in an instruction
++    notes = [n for n in notes if not any(n != i and norm_label(n) in norm_label(i) for i in instructions)]
++    return ExtractedTexts(instructions=instructions, notes=notes, validation_msgs=validation)
++
++
++def _page_error_elements(soup: BeautifulSoup) -> list[str]:
++    out = []
++    seen: set[str] = set()
++    for elem in soup.find_all(True):
++        ident = " ".join(elem.get("class") or []) + " " + (elem.get("id") or "") + " " + (elem.get("role") or "")
++        if ERROR_ELEM_RE.search(ident):
++            txt = _clean_text(elem.get_text(" ", strip=True), 300)
++            if txt and norm_label(txt) not in seen:
++                seen.add(norm_label(txt))
++                out.append(txt)
++    return out
++
++
++# --------------------------------------------------------------------------- #
++# question classification
++# --------------------------------------------------------------------------- #
++
++def _classify_choice(fields: list[Field]) -> str:
++    radios = [f for f in fields if f.type == "radio"]
++    checks = [f for f in fields if f.type == "checkbox"]
++    pool = radios or checks
++
++    by_name: dict[str, list[Field]] = defaultdict(list)
++    for f in pool:
++        by_name[f.name].append(f)
++
++    def structure() -> tuple[bool, list[str], int]:
++        groups = [by_name[n] for n in by_name]
++        sizes = {len(g) for g in groups}
++        labelsets = {tuple(sorted({norm_label(x.label or x.value) for x in g})) for g in groups}
++        uniform = len(groups) >= 2 and len(sizes) == 1 and next(iter(sizes)) >= 2 and len(labelsets) == 1
++        return uniform, [g[0].row_label for g in groups], next(iter(sizes)) if sizes else 0
++
++    if len(by_name) == 1:
++        return "single" if radios else "multi"
++
++    uniform, _rows, ncols = structure()
++    all_singletons = all(len(g) == 1 for g in by_name.values())
++
++    if radios:
++        if uniform:
++            # ranking? rows == cols and labels look like ranks 1..N
++            nrows = len(by_name)
++            col_labels = [norm_label(x.label or x.value) for x in by_name[next(iter(by_name))]]
++            rankish = all(_RANK_LABEL_RE.match(c) for c in col_labels) and nrows == ncols
++            return "ranking" if rankish else "grid_single"
++        if all_singletons:
++            return "single"       # per-option names (q1_1, q1_2, ... one radio each)
++        return "grid_single"
++    if uniform:
++        return "grid_multi"
++    if all_singletons:
++        return "multi"
++    return "grid_multi"
++
++
++def _parse_selects(fields: list[Field]) -> None:
++    for f in fields:
++        if f.is_placeholder_option:
++            label = f.label
++            if not label or PLACEHOLDER_OPTION_RE.match(label) or f.value == "":
++                f.is_placeholder_option = True
++
++
++# --------------------------------------------------------------------------- #
++# main entry
++# --------------------------------------------------------------------------- #
++
++def analyze(html: str, url: str = "") -> Page:
++    full_soup = BeautifulSoup(html or "", "lxml")
++    script_count = len(full_soup.find_all("script"))
++    soup = full_soup
++    for bad in soup(["script", "style", "noscript"]):
++        bad.extract()
++    page_root: Tag = soup.body or soup
++
++    fields_raw = _collect_fields(soup)
++    for_map = _label_map(soup)
++
++    # --- page-level pieces ------------------------------------------------- #
++    hiddens: list[tuple[str, str]] = []
++    submits: list[SubmitControl] = []
++    answer_fields: list[Field] = []
++
++    for dom_index, tag, typ in fields_raw:
++        if typ == "hidden":
++            if tag.get("name"):
++                hiddens.append((tag["name"], tag.get("value", "")))
++            continue
++        if typ in ("submit", "image") or (tag.name == "button" and typ != "button"):
++            label = _clean_text(tag.get("value") or tag.get_text(" ", strip=True), 80)
++            submits.append(SubmitControl(
++                name=tag.get("name", ""), value=tag.get("value", ""),
++                label=label, dom_index=dom_index, tag=tag.name,
++            ))
++            continue
++        if tag.name == "button" or typ == "button":
++            label = _clean_text(tag.get_text(" ", strip=True), 80)
++            submits.append(SubmitControl(
++                name=tag.get("name", ""), value=tag.get("value", ""),
++                label=label, dom_index=dom_index, tag="button",
++            ))
++            continue
++
++        f = Field(dom_index=dom_index, name=tag.get("name", ""), type=typ)
++        f.label = _field_label(tag, for_map)
++        f.value = tag.get("value", "") or ""
++        f.checked = tag.has_attr("checked")
++        f.min = tag.get("min")
++        f.max = tag.get("max")
++        f.step = tag.get("step")
++        f.placeholder = tag.get("placeholder")
++        f.pattern = tag.get("pattern")
++        f.required = tag.has_attr("required") or (tag.get("aria-required") or "").lower() == "true"
++        ml, mn = tag.get("maxlength"), tag.get("minlength")
++        f.maxlength = int(ml) if ml and str(ml).isdigit() else None
++        f.minlength = int(mn) if mn and str(mn).isdigit() else None
++
++        if typ in ("radio", "checkbox"):
++            f.exclusive = bool(EXCLUSIVE_RE.search(f.label)) and bool(f.label)
++            f.consent = bool(CONSENT_RE.search(f.label)) and bool(f.label)
++            if f.type == "radio":
++                f.row_label = _row_label(tag)
++        if typ in ("select-one", "select-multiple"):
++            pass
++        answer_fields.append(f)
++
++    # select options live inside <select>: expand them
++    for f in answer_fields:
++        if f.type not in ("select-one", "select-multiple"):
++            continue
++        tag = next(t for i, t, _ in fields_raw if i == f.dom_index)
++        opts = []
++        for o in tag.find_all("option"):
++            of = Field(dom_index=f.dom_index, name=f.name, type=f.type)
++            of.label = _clean_text(o.get_text(" ", strip=True), 200)
++            of.value = o.get("value", "")
++            of.is_placeholder_option = (not of.value) or bool(PLACEHOLDER_OPTION_RE.match(of.label))
++            of.checked = o.has_attr("selected")
++            opts.append(of)
++        f.options = opts
++        if f.type == "select-one" and not f.new_value:
++            # current selection: explicitly selected option, else first non-placeholder
++            cur = next((o for o in opts if o.checked), None)
++            if cur is None:
++                cur = next((o for o in opts if not o.is_placeholder_option), None) or (
++                    opts[0] if opts else None
++                )
++            if cur is not None:
++                f.value = cur.value
++
++    # --- clustering -------------------------------------------------------- #
++    clusters: dict[str, list[Field]] = defaultdict(list)
++    anon_parent: dict[int, Tag] = {}
++    for f in answer_fields:
++        if f.name:
++            clusters[_name_base(f.name)].append(f)
++        else:
++            tag = next(t for i, t, _ in fields_raw if i == f.dom_index)
++            parent = tag.parent if isinstance(tag.parent, Tag) else page_root
++            anon_parent.setdefault(id(parent), parent)
++            clusters[f"__anon_{id(parent)}"].append(f)
++
++    # DOM-order clusters
++    clusters_ordered = sorted(
++        clusters.values(),
++        key=lambda fs: min(f.dom_index for f in fs),
++    )
++
++    dom_tag = {i: t for i, t, _ in fields_raw}
++    all_field_ids = {id(t) for t in dom_tag.values()}
++
++    # resolve each cluster's container, then merge clusters that together
++    # form one constant-sum question (separate names p1/p2/p3 in one box)
++    resolved: list[tuple[list[Field], list[Tag], Tag | None]] = []
++    for fs in clusters_ordered:
++        tags = [dom_tag[f.dom_index] for f in fs if f.dom_index in dom_tag]
++        if not tags:
++            continue
++        nca = _common_ancestor(tags)
++        nca = _climb_to_question(nca, {id(t) for t in tags}, all_field_ids)
++        resolved.append((fs, tags, nca))
++
++    merged: list[tuple[list[Field], list[Tag], Tag | None]] = []
++    used: set[int] = set()
++    for i, (fs, tags, nca) in enumerate(resolved):
++        if i in used:
++            continue
++        group_fs, group_tags, group_idx = list(fs), list(tags), [i]
++        if nca is not None and all(f.type == "number" for f in fs):
++            ntext = nca.get_text(" ", strip=True)
++            if _TOTAL_RE.search(ntext) or _POINTS_RE.search(ntext):
++                for j in range(i + 1, len(resolved)):
++                    if j in used:
++                        continue
++                    fs2, tags2, nca2 = resolved[j]
++                    if nca2 is nca and all(f.type == "number" for f in fs2):
++                        group_fs.extend(fs2)
++                        group_tags.extend(tags2)
++                        group_idx.append(j)
++        for j in group_idx:
++            used.add(j)
++        merged.append((group_fs, group_tags, nca))
++
++    # --- build questions --------------------------------------------------- #
++    questions: list[Question] = []
++    all_validation: list[str] = []
++    page_scope: Tag = page_root
++
++    for fs, tags, nca in merged:
++        texts = _extract_texts(nca, page_scope)
++        all_validation.extend(texts.validation_msgs)
++
++        qtext = _question_text(nca, tags[0], texts.instructions)
++
++        # kind
++        has_radio = any(f.type == "radio" for f in fs)
++        has_check = any(f.type == "checkbox" for f in fs)
++        has_select = any(f.type in ("select-one", "select-multiple") for f in fs)
++        scalars = [f for f in fs if f.type in ("text", "textarea", "number", "range", "date", "time", "datetime-local")]
++
++        if has_radio or has_check:
++            kind = _classify_choice(fs)
++        elif has_select:
++            kind = "dropdown"
++        elif scalars:
++            stypes = {f.type for f in scalars}
++            if stypes in ({"number"}, {"number", "text"}):
++                if len(scalars) >= 2 or _TOTAL_RE.search(qtext) or _POINTS_RE.search(qtext):
++                    kind = "constant_sum"
++                else:
++                    kind = "number"
++            elif "range" in stypes:
++                kind = "slider"
++            elif "date" in stypes:
++                kind = "date"
++            elif "time" in stypes:
++                kind = "time"
++            else:
++                kind = "text"
++        else:
++            kind = "unknown"
++
++        # sig
++        sig = ""
++        if nca is not None:
++            for attr in ("data-qid", "data-question-id", "id"):
++                v = nca.get(attr)
++                if v and re.search(r"[Qq]|\d", str(v)):
++                    sig = str(v)
++                    break
++        if not sig:
++            named = [f.name for f in fs if f.name]
++            if named:
++                base = _name_base(named[0])
++                # ensure all names share the base, otherwise hash
++                if all(_name_base(n) == base or n == base for n in named):
++                    sig = base
++        if not sig:
++            sig = hashlib.sha1(norm_label(qtext).encode()).hexdigest()[:10]
++
++        q = Question(sig=sig, text=qtext, kind=kind, fields=fs,
++                     instructions=texts.instructions, notes=texts.notes)
++        q.qid = (nca.get("data-qid") or nca.get("id") or "") if nca is not None else ""
++
++        # min/max/total from wording
++        m = _MIN_SEL_RE.search(qtext) or _MIN_SEL_RE.search(" ".join(q.notes + q.instructions))
++        if m:
++            q.min_select = max(1, int(m.group(1)))
++        m = _MAX_SEL_RE.search(qtext)
++        if m:
++            q.max_select = int(m.group(1))
++        if kind == "constant_sum":
++            m = _TOTAL_RE.search(qtext) or _POINTS_RE.search(qtext)
++            if m:
++                q.total = int(m.group(1))
++
++        # grid row labels (assign to every field of the row)
++        if kind in ("grid_single", "grid_multi", "ranking"):
++            by_name: dict[str, list[Field]] = defaultdict(list)
++            for f in fs:
++                if f.type in ("radio", "checkbox"):
++                    by_name[f.name].append(f)
++            for _n, group in by_name.items():
++                rl = group[0].row_label
++                for f in group:
++                    f.row_label = rl
++
++        questions.append(q)
++
++    # --- validation messages ---------------------------------------------- #
++    all_validation.extend(_page_error_elements(soup))
++    visible = page_scope.get_text("\n", strip=True)
++    all_validation.extend(find_validation(visible))
++    # dedupe, keep order
++    seen_v: set[str] = set()
++    validations = []
++    for v in all_validation:
++        k = norm_label(v)
++        if k and k not in seen_v:
++            seen_v.add(k)
++            validations.append(v)
++
++    # --- outcome ----------------------------------------------------------- #
++    status, evidence = classify_text(visible, url)
++    has_answer = bool(answer_fields)
++    if status and has_answer and not _url_signals_end(url):
++        # end-text coexisting with real answer controls on a fresh page is
++        # usually question wording (e.g. "Have you ever been terminated?")
++        status = ""
++
++    if status:
++        outcome = Outcome(status)
++        messages = validations if outcome in (Outcome.TERMINATE, Outcome.QUOTA_FULL) else evidence
++        if outcome in (Outcome.TERMINATE, Outcome.QUOTA_FULL, Outcome.COMPLETE):
++            messages = evidence + validations
++    elif validations and has_answer:
++        outcome = Outcome.VALIDATION
++        messages = validations
++    elif has_answer:
++        outcome = Outcome.QUESTION
++        messages = validations
++    elif submits:
++        outcome = Outcome.INTERSTITIAL
++        messages = validations
++    else:
++        outcome = Outcome.UNKNOWN
++        messages = validations
++
++    # form info
++    form_action, form_method, form_tag = "", "POST", None
++    if answer_fields:
++        first_tag = next((t for i, t, _ in fields_raw if i == answer_fields[0].dom_index), None)
++        form_tag = first_tag.find_parent("form") if first_tag is not None else None
++    if form_tag is None:
++        form_tag = soup.find("form")
++    if form_tag is not None:
++        form_action = form_tag.get("action", "") or url
++        form_method = (form_tag.get("method") or "POST").upper()
++
++    js_heavy = (not answer_fields) and (not submits) and script_count > 0
++
++    return Page(
++        url=url,
++        outcome=outcome,
++        questions=questions,
++        messages=messages,
++        hiddens=hiddens,
++        submits=submits,
++        form_action=form_action,
++        form_method=form_method,
++        js_heavy=js_heavy,
++    )
++
++
++def _url_signals_end(url: str) -> bool:
++    u = (url or "").lower()
++    return bool(re.search(r"terminat|quota|complete|finished|thanks|thankyou|/end\b", u))
++
++
++def page_report(page: Page) -> str:
++    """Human-readable structure report (used by the `analyze` command)."""
++    lines = [f"url:       {page.url}",
++             f"outcome:   {page.outcome.value}"]
++    for m in page.messages[:5]:
++        lines.append(f"message:   {m}")
++    lines.append(f"questions: {len(page.questions)}")
++    for q in page.questions:
++        lines.append(f"  - [{q.sig}] ({q.kind}) {q.text[:90]!r}")
++        for i in q.instructions:
++            lines.append(f"      RED instruction: {i!r}")
++        for n in q.notes[:2]:
++            lines.append(f"      note: {n!r}")
++        show = q.fields if len(q.fields) <= 14 else q.fields[:14]
++        for f in show:
++            extra = f" row={f.row_label!r}" if f.row_label else ""
++            flags = []
++            if f.exclusive:
++                flags.append("exclusive")
++            if f.consent:
++                flags.append("consent")
++            if f.is_placeholder_option:
++                flags.append("placeholder")
++            fl = (" [" + ",".join(flags) + "]") if flags else ""
++            lines.append(
++                f"        #{f.dom_index} {f.type:<14} name={f.name!r} "
++                f"label={f.label!r} value={f.value!r}{extra}{fl}"
++            )
++        if len(q.fields) > 14:
++            lines.append(f"        ... {len(q.fields) - 14} more fields")
++    if page.submits:
++        lines.append("submits:   " + ", ".join(
++            f"{s.label!r}({s.tag}:{s.name})" for s in page.submits[:6]))
++    return "\n".join(lines)
+diff --git a/survey_flow/cli.py b/survey_flow/cli.py
+new file mode 100644
+index 0000000..e1aa162
+--- /dev/null
++++ b/survey_flow/cli.py
+@@ -0,0 +1,191 @@
++"""Command-line interface for survey-flow."""
++
++from __future__ import annotations
++
++import argparse
++import logging
++import re
++import sys
++
++from .decider import STRATEGIES, Decider, Persona
++from .engines import EngineUnavailable, create_engine
++from .memory import DEFAULT_MEMORY_PATH, TerminateMemory
++from .runner import Runner, RunConfig
++
++log = logging.getLogger("survey_flow")
++
++_TEST_URL_RE = re.compile(r"(^|[/._?&=\-])test(s|ing)?([/._?&=\-]|$)", re.I)
++
++
++def looks_like_test_url(url: str) -> bool:
++    return bool(_TEST_URL_RE.search(url or ""))
++
++
++def _setup_logging(level: str, log_file: str | None) -> None:
++    fmt = "%(levelname)-7s %(name)s: %(message)s"
++    root = logging.getLogger()
++    for h in list(root.handlers):          # avoid duplicates on repeated calls
++        root.removeHandler(h)
++    root.setLevel(getattr(logging, level.upper(), logging.INFO))
++    sh = logging.StreamHandler()
++    sh.setFormatter(logging.Formatter(fmt))
++    root.addHandler(sh)
++    if log_file:
++        fh = logging.FileHandler(log_file, encoding="utf-8")
++        fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s"))
++        root.addHandler(fh)
++
++
++def _avoid_tuple(spec: str) -> tuple[str, ...]:
++    parts = tuple(p.strip() for p in spec.split(",") if p.strip())
++    for p in parts:
++        if p not in ("terminate", "quota_full"):
++            raise SystemExit(f"--avoid: unknown status {p!r} (use terminate and/or quota_full)")
++    if not parts:
++        raise SystemExit("--avoid: at least one status required")
++    return parts
++
++
++def build_parser() -> argparse.ArgumentParser:
++    p = argparse.ArgumentParser(
++        prog="survey-flow",
++        description="Rule-based (no AI) Confirmit/Forsta TEST-survey runner: "
++                    "answers questions by analyzing the page, follows red bold "
++                    "instructions, remembers selections that terminate and avoids them.",
++    )
++    p.add_argument("--log-level", default="INFO",
++                   choices=["DEBUG", "INFO", "WARNING", "ERROR"])
++    p.add_argument("--log-file", default=None, help="also log to this file")
++    # allow the same flags AFTER the subcommand as well
++    common = argparse.ArgumentParser(add_help=False)
++    common.add_argument("--log-level", default=argparse.SUPPRESS,
++                        choices=["DEBUG", "INFO", "WARNING", "ERROR"])
++    common.add_argument("--log-file", default=argparse.SUPPRESS, help="also log to this file")
++    sub = p.add_subparsers(dest="command", required=True)
++
++    run = sub.add_parser("run", parents=[common], help="run the survey until N completes")
++    run.add_argument("url", help="Forsta/Confirmit test-link URL")
++    run.add_argument("--completes", type=int, default=1, required=True,
++                     help="how many completes you need")
++    run.add_argument("--memory", default=DEFAULT_MEMORY_PATH,
++                     help="terminate-memory file (default: %(default)s)")
++    run.add_argument("--persona", default=None,
++                     help="persona JSON with consistent test answers")
++    run.add_argument("--strategy", default="random", choices=list(STRATEGIES),
++                     help="how to answer when there is no red instruction "
++                          "(options already known to terminate are always excluded)")
++    run.add_argument("--engine", default="http", choices=["http", "browser"],
++                     help="http = plain forms (default); browser = Playwright for JS pages")
++    run.add_argument("--headed", action="store_true", help="browser engine: show the window")
++    run.add_argument("--delay", type=float, default=0.3, help="pause between runs (seconds)")
++    run.add_argument("--max-attempts", type=int, default=60,
++                     help="max whole runs before giving up")
++    run.add_argument("--max-pages", type=int, default=80, help="max pages per run")
++    run.add_argument("--seed", type=int, default=None, help="seed the random strategy")
++    run.add_argument("--avoid", default="terminate,quota_full",
++                     help="comma statuses to remember & avoid (default: %(default)s)")
++    run.add_argument("--trace", default="traces.jsonl",
++                     help="JSONL file recording every run path ('' to disable)")
++    run.add_argument("--allow-live", action="store_true",
++                     help="permit a URL that does not look like a test link "
++                          "(QA only - never field live surveys with this tool)")
++    run.set_defaults(func=cmd_run)
++
++    ana = sub.add_parser("analyze", parents=[common], help="fetch one page and print its structure")
++    ana.add_argument("url")
++    ana.add_argument("--engine", default="http", choices=["http", "browser"])
++    ana.add_argument("--headed", action="store_true")
++    ana.set_defaults(func=cmd_analyze)
++
++    mem = sub.add_parser("memory", parents=[common], help="inspect or clear the terminate memory")
++    mem.add_argument("action", nargs="?", default="show", choices=["show", "clear"])
++    mem.add_argument("--memory", default=DEFAULT_MEMORY_PATH)
++    mem.add_argument("--avoid", default="terminate,quota_full")
++    mem.set_defaults(func=cmd_memory)
++    return p
++
++
++# --------------------------------------------------------------------------- #
++
++def cmd_run(args) -> int:
++    if not looks_like_test_url(args.url) and not args.allow_live:
++        log.error(
++            "refusing: %r does not look like a TEST link. This tool is for "
++            "survey QA on test links only. If you are sure, re-run with --allow-live.",
++            args.url,
++        )
++        return 3
++
++    avoid = _avoid_tuple(args.avoid)
++    memory = TerminateMemory(args.memory, avoid=avoid)
++    persona = Persona.load(args.persona) if args.persona else Persona()
++    decider = Decider(memory, persona=persona, strategy=args.strategy, seed=args.seed)
++
++    try:
++        engine = create_engine(args.engine, headed=args.headed)
++    except EngineUnavailable as e:
++        log.error("%s", e)
++        return 3
++
++    cfg = RunConfig(
++        url=args.url,
++        completes=args.completes,
++        max_attempts=args.max_attempts,
++        max_pages=args.max_pages,
++        delay=args.delay,
++        trace_path=args.trace or None,
++    )
++    runner = Runner(cfg, memory, decider, engine)
++    log.info("target: %d completes | strategy=%s | engine=%s | memory=%s",
++             args.completes, args.strategy, args.engine, args.memory)
++    try:
++        return runner.run()
++    finally:
++        engine.close()
++
++
++def cmd_analyze(args) -> int:
++    from .analyzer import page_report
++
++    try:
++        engine = create_engine(args.engine, headed=args.headed)
++    except EngineUnavailable as e:
++        log.error("%s", e)
++        return 3
++    try:
++        session = engine.new_session()
++        html, url = session.fetch(args.url)
++        from .analyzer import analyze
++        page = analyze(html, url)
++        print(page_report(page))
++        session.close()
++        return 0
++    except Exception as e:
++        log.error("analyze failed: %s", e)
++        return 2
++    finally:
++        engine.close()
++
++
++def cmd_memory(args) -> int:
++    avoid = _avoid_tuple(args.avoid)
++    memory = TerminateMemory(args.memory, avoid=avoid)
++    if args.action == "clear":
++        memory.clear()
++        print(f"cleared {args.memory}")
++        return 0
++    print(f"file: {args.memory}")
++    for line in memory.summary_lines():
++        print(line)
++    return 0
++
++
++def main(argv=None) -> int:
++    parser = build_parser()
++    args = parser.parse_args(argv)
++    _setup_logging(args.log_level, args.log_file)
++    return args.func(args)
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/survey_flow/decider.py b/survey_flow/decider.py
+new file mode 100644
+index 0000000..3f392dd
+--- /dev/null
++++ b/survey_flow/decider.py
+@@ -0,0 +1,575 @@
++"""Answer decisions: rule-based, no AI.
++
++Priority per question:
++  1. red instruction (explicitly tells the tester which answer avoids a terminate)
++  2. persona (consistent test-scenario values, e.g. age/email)
++  3. strategy among options NOT remembered as terminating (random/first/round-robin)
++
++Validation messages are read back (per the QA guide) and used to correct the
++answer on retry: "select at least 4" -> select 4, "between 18 and 25" -> pick
++inside that range, etc.
++"""
++
++from __future__ import annotations
++
++import json
++import logging
++import random
++import re
++from pathlib import Path
++from typing import Optional
++
++from .instructions import (
++    Hint,
++    match_targets_to_options,
++    norm_label,
++    parse_instruction,
++)
++from .memory import TerminateMemory
++from .models import Field, Page, Question
++
++log = logging.getLogger("survey_flow.decider")
++
++STRATEGIES = ("random", "first", "round-robin")
++
++_BETWEEN_RE = re.compile(r"between\s+(\d+(?:\.\d+)?)\s+and\s+(\d+(?:\.\d+)?)", re.I)
++_TO_RANGE_RE = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)\b", re.I)
++_AT_LEAST_RE = re.compile(r"at\s+least\s+(\d+)", re.I)
++_MIN_LEN_RE = re.compile(r"minimum\s+(?:length\s+)?(?:of\s+)?(\d+)", re.I)
++
++
++# --------------------------------------------------------------------------- #
++# persona
++# --------------------------------------------------------------------------- #
++
++class Persona:
++    def __init__(self, data: Optional[dict] = None):
++        data = data or {}
++        reserved = {"keywords", "text"}
++        self.text = str(data.get("text", "Test response"))
++        kw = dict(data.get("keywords") or {})
++        for k, v in data.items():
++            if k not in reserved:
++                kw[k] = v
++        self.keywords: dict[str, object] = kw
++
++    @classmethod
++    def load(cls, path: str) -> "Persona":
++        p = Path(path)
++        if not p.exists():
++            raise SystemExit(f"persona file not found: {path}")
++        return cls(json.loads(p.read_text(encoding="utf-8")))
++
++    def match_question(self, qtext: str):
++        """Return (keyword, value) for the first keyword found in the question text."""
++        ql = norm_label(qtext)
++        for k, v in self.keywords.items():
++            nk = norm_label(str(k))
++            if nk and nk in ql:
++                return k, v
++        return None, None
++
++
++# --------------------------------------------------------------------------- #
++# validation-message constraints
++# --------------------------------------------------------------------------- #
++
++def constraints_from_validations(msgs: list[str]) -> dict:
++    out: dict = {}
++    for m in msgs:
++        match = _AT_LEAST_RE.search(m)
++        if match:
++            out["min_select"] = max(out.get("min_select", 0), int(match.group(1)))
++        match = _BETWEEN_RE.search(m)
++        if match:
++            out["range"] = (float(match.group(1)), float(match.group(2)))
++        match = _MIN_LEN_RE.search(m)
++        if match:
++            out["min_length"] = max(out.get("min_length", 0), int(match.group(1)))
++        if re.search(r"too\s+short", m, re.I):
++            out["min_length"] = max(out.get("min_length", 30))
++    return out
++
++
++# --------------------------------------------------------------------------- #
++# decider
++# --------------------------------------------------------------------------- #
++
++class Decider:
++    def __init__(
++        self,
++        memory: TerminateMemory,
++        persona: Optional[Persona] = None,
++        strategy: str = "random",
++        seed: Optional[int] = None,
++    ):
++        if strategy not in STRATEGIES:
++            raise ValueError(f"strategy must be one of {STRATEGIES}")
++        self.memory = memory
++        self.persona = persona or Persona()
++        self.strategy = strategy
++        self.rng = random.Random(seed)
++        self.rr: dict[str, int] = {}   # round-robin counters (process-local)
++
++    # ------------------------------------------------------------------ #
++    def decide_page(self, page: Page, attempt: int = 0, validation_msgs: list[str] | None = None) -> None:
++        validation_msgs = validation_msgs or []
++        vcons = constraints_from_validations(validation_msgs)
++        for q in page.questions:
++            try:
++                self.decide_question(q, attempt=attempt, vcons=vcons)
++            except Exception:  # keep going: one odd question must not kill the run
++                log.exception("decision failed for question %s", q.sig)
++
++    # ------------------------------------------------------------------ #
++    def decide_question(self, q: Question, attempt: int = 0, vcons: dict | None = None) -> None:
++        vcons = vcons or {}
++        # reset any previous decision state
++        for f in q.fields:
++            f.selected = False
++            f.new_value = None
++
++        self.memory.note_seen(q.sig, q.text)
++
++        # apply a min-selection learned from an earlier validation message
++        learned_min = self.memory.learned(q.sig, "min_select")
++        if learned_min:
++            q.min_select = max(q.min_select, int(learned_min))
++
++        if q.kind == "constant_sum":
++            self._decide_constant_sum(q)
++        else:
++            self._decide_choices(q, attempt, vcons)
++            self._decide_scalars(q, attempt, vcons)
++
++        self._decide_consent(q)
++
++    # ------------------------------------------------------------------ #
++    # instructions
++    # ------------------------------------------------------------------ #
++    def _instruction_targets(self, q: Question) -> tuple[list[Field], Optional[Hint]]:
++        """Parse all red instructions; return matched option fields + first text/number hint."""
++        option_pool = self._option_pool(q)
++        matched: list[Field] = []
++        seen: set[int] = set()
++        scalar_hint: Optional[Hint] = None
++        for text in q.instructions:
++            hint = parse_instruction(text)
++            if hint.kind == "none":
++                continue
++            if hint.kind == "text" and scalar_hint is None:
++                scalar_hint = hint
++                continue
++            hits = match_targets_to_options(hint.targets, hint.numbers, option_pool, q.kind)
++            if hits:
++                for f in hits:
++                    if id(f) not in seen:
++                        seen.add(id(f))
++                        matched.append(f)
++            elif hint.kind == "options" and not scalar_hint and (
++                hint.numbers or _looks_scalar_hint(hint)
++            ):
++                scalar_hint = hint
++        return matched, scalar_hint
++
++    # ------------------------------------------------------------------ #
++    def _option_pool(self, q: Question) -> list[Field]:
++        pool: list[Field] = []
++        for f in q.fields:
++            if f.type in ("radio", "checkbox"):
++                pool.append(f)
++            elif f.type == "select-one":
++                pool.extend(o for o in f.options if not o.is_placeholder_option)
++        return pool
++
++    @staticmethod
++    def _apply_selection(q: Question, fields: list[Field]) -> None:
++        for f in fields:
++            if f.type in ("radio", "checkbox"):
++                f.selected = True
++            elif f.type == "select-one":
++                owner = _select_owner(f, q.fields)
++                if owner is not None:
++                    owner.new_value = f.value
++
++    # ------------------------------------------------------------------ #
++    # choices
++    # ------------------------------------------------------------------ #
++    def _decide_choices(self, q: Question, attempt: int, vcons: dict) -> None:
++        if not q.is_choice:
++            return
++
++        pool = self._option_pool(q)
++        if not pool:
++            return
++
++        matched, _scalar_hint = self._instruction_targets(q)
++
++        # ---- rows (grid / ranking) ------------------------------------ #
++        if q.kind in ("grid_single", "grid_multi", "ranking"):
++            rows = _rows_of(q)
++            if q.kind == "ranking":
++                self._decide_ranking(q, rows)
++                return
++            k_row = q.min_select
++            if "min_select" in vcons:
++                k_row = max(k_row, vcons["min_select"])
++                self.memory.set_learned(q.sig, "min_select", vcons["min_select"])
++            if attempt:
++                k_row = k_row + attempt
++            for row_name, row_fields in rows:
++                row_matched = [f for f in matched if f.name == row_name]
++                if row_matched:
++                    # keep at most one per row for SA grids
++                    if q.kind == "grid_single":
++                        row_matched = row_matched[:1]
++                    self._apply_selection(q, row_matched)
++                    continue
++                k = min(k_row, len(row_fields)) if q.kind == "grid_multi" else 1
++                chosen = self._pick(q, row_fields, k, row_key=row_name)
++                self._apply_selection(q, chosen)
++            return
++
++        # ---- single select (SA, dropdown, NPS, rating) ----------------- #
++        if q.kind in ("single", "dropdown", "nps", "rating"):
++            if matched:
++                pick = matched[0]
++                self._apply_selection(q, [pick])
++                return
++            # persona: match a persona value against the options
++            _kw, val = self.persona.match_question(q.text)
++            if val is not None:
++                for f in pool:
++                    if _value_matches_label(str(val), f.label or f.value):
++                        self._apply_selection(q, [f])
++                        return
++            chosen = self._pick(q, pool, 1)
++            self._apply_selection(q, chosen)
++            return
++
++        # ---- multi select --------------------------------------------- #
++        if q.kind == "multi":
++            if matched:
++                self._apply_selection(q, matched)
++                return
++            k = q.min_select
++            if "min_select" in vcons:
++                k = max(k, vcons["min_select"])
++                self.memory.set_learned(q.sig, "min_select", vcons["min_select"])
++            if attempt and "min_select" not in vcons:
++                k += attempt
++            if q.max_select:
++                k = min(k, q.max_select)
++            chosen = self._pick(q, pool, k)
++            self._apply_selection(q, chosen)
++            return
++
++    def _decide_ranking(self, q: Question, rows: list) -> None:
++        n = len(rows)
++        if n == 0:
++            return
++        rot = self.rr.get(q.sig, 0) % n
++        self.rr[q.sig] = self.rr.get(q.sig, 0) + 1
++        for i, (_row_name, row_fields) in enumerate(rows):
++            rank = ((i + rot) % n) + 1
++            want = str(rank)
++            target = next((f for f in row_fields if f.value == want), None)
++            if target is None:
++                target = next((f for f in row_fields if norm_label(f.label) == norm_label(want)), None)
++            if target is None:
++                target = row_fields[(rank - 1) % len(row_fields)]
++            target.selected = True
++
++    # ------------------------------------------------------------------ #
++    # the core picker: exclude remembered-terminate options
++    # ------------------------------------------------------------------ #
++    def _pick(
++        self,
++        q: Question,
++        candidates: list[Field],
++        k: int,
++        *,
++        row_key: str = "",
++    ) -> list[Field]:
++        if not candidates:
++            return []
++        k = max(1, k)
++
++        fatal = [f for f in candidates if self._is_fatal(q, f)]
++        safe = [f for f in candidates if f not in fatal]
++        pool = safe if safe else candidates          # if everything is fatal, must pick anyway
++        if fatal and safe:
++            log.debug("q=%s avoiding fatal options: %s", q.sig,
++                      [f.label for f in fatal])
++
++        # respect exclusive options ("None of these", "Don't know", ...)
++        non_excl = [f for f in pool if not f.exclusive]
++        chosen: list[Field] = []
++
++        if k > 1 and non_excl:
++            pool_use = non_excl            # never mix an exclusive option into multi-selects
++        elif non_excl and len(non_excl) < len(pool) and k == 1 and self.strategy == "random":
++            # prefer substantive answers but keep exclusive as (rare) fallback
++            pool_use = non_excl
++        else:
++            pool_use = pool
++
++        if self.strategy == "first":
++            chosen = pool_use[:k]
++        elif self.strategy == "round-robin":
++            key = f"{q.sig}|{row_key}"
++            start = self.rr.get(key, 0) % max(1, len(pool_use))
++            self.rr[key] = self.rr.get(key, 0) + 1
++            chosen = [pool_use[(start + i) % len(pool_use)] for i in range(min(k, len(pool_use)))]
++            # de-dup (k may wrap)
++            seen: set[int] = set()
++            chosen = [f for f in chosen if not (id(f) in seen or seen.add(id(f)))]
++        else:  # random
++            non_excl_use = [f for f in pool_use if not f.exclusive] or pool_use
++            if k >= len(non_excl_use):
++                chosen = list(non_excl_use)
++            else:
++                chosen = self.rng.sample(non_excl_use, k)
++                # tiny chance to include an exclusive answer for data variety
++                if k == 1 and len(non_excl_use) < len(pool_use) and self.rng.random() < 0.05:
++                    chosen = [self.rng.choice(pool_use)]
++
++        # if a lone exclusive answer got chosen together with others, keep exclusive only
++        excl = [f for f in chosen if f.exclusive]
++        if excl and len(chosen) > 1:
++            if any(f.type in ("radio", "select-one") for f in chosen):
++                chosen = excl[:1]
++        if q.max_select:
++            chosen = chosen[: q.max_select]
++        return chosen
++
++    def _is_fatal(self, q: Question, f: Field) -> bool:
++        return self.memory.is_fatal(q.sig, f.identity, f.label, f.value)
++
++    # ------------------------------------------------------------------ #
++    # scalars (text / number / date / slider ...)
++    # ------------------------------------------------------------------ #
++    def _decide_scalars(self, q: Question, attempt: int, vcons: dict) -> None:
++        if not q.scalars:
++            return
++
++        # instruction / persona lookup
++        _matched, scalar_hint = self._instruction_targets(q)
++        kw, val = self.persona.match_question(q.text)
++
++        other_chosen = any(
++            (f.selected or f.new_value) and _is_other(f) for f in q.fields
++        )
++
++        for f in q.scalars:
++            # "Other - specify" companion box: only filled when Other is chosen
++            if _is_other_box(f) and not other_chosen:
++                continue
++
++            value: Optional[str] = None
++
++            # 1) instruction
++            if scalar_hint is not None and scalar_hint.targets:
++                value = str(scalar_hint.targets[0])
++                if f.type in ("number", "range") or _looks_number(value):
++                    try:
++                        num = float(value)
++                        value = str(int(num)) if num.is_integer() else str(num)
++                    except ValueError:
++                        value = None
++            # 2) persona (keyword matched this question, or name hints)
++            if value is None and val is not None and kw is not None:
++                if norm_label(str(kw)) in norm_label(f.name + " " + f.label) or _question_matches_kw(q, kw):
++                    value = str(val)
++            if value is None:
++                value = self._generate_scalar(f, q, attempt, vcons)
++
++            value = _clamp(f, value)
++            if value is not None:
++                f.new_value = value
++
++    def _generate_scalar(self, f: Field, q: Question, attempt: int, vcons: dict) -> str:
++        if f.type == "number":
++            lo, hi = _number_bounds(f, q, vcons)
++            if lo is None and hi is None:
++                return str(30 + attempt * 3)
++            lo = 0 if lo is None else lo
++            hi = lo if hi is None else hi
++            if hi < lo:
++                lo, hi = hi, lo
++            step = f.step or ""
++            if "." in step:
++                val = round(self.rng.uniform(float(lo), float(hi)), 2)
++                return str(val)
++            return str(self.rng.randint(int(lo), int(hi)))
++        if f.type == "range":
++            lo = float(f.min) if f.min else 0.0
++            hi = float(f.max) if f.max else 100.0
++            mid = (lo + hi) / 2
++            return _snap(mid, f)
++        if f.type == "date":
++            target = "1985-06-15"
++            if f.min and target < f.min:
++                target = f.min
++            if f.max and target > f.max:
++                target = f.max
++            return target
++        if f.type in ("time", "datetime-local"):
++            return "12:00" if f.type == "time" else "2024-06-15T12:00"
++        # text-ish
++        base = self.persona.text
++        if "min_length" in vcons and vcons["min_length"] > len(base):
++            base = (base + " ") * 2
++            while len(base) < vcons["min_length"]:
++                base += base
++        need = f.minlength or 0
++        while len(base) < need:
++            base += " " + self.persona.text
++        if f.maxlength:
++            base = base[: f.maxlength]
++        return base
++
++    # ------------------------------------------------------------------ #
++    def _decide_constant_sum(self, q: Question) -> None:
++        fields = [f for f in q.scalars if f.type in ("number", "text")]
++        if not fields:
++            return
++        total = q.total if q.total is not None else 100
++        n = len(fields)
++        base = total // n if n else total
++        rem = total - base * n if n else 0
++        for i, f in enumerate(fields):
++            v = base + (rem if i == 0 else 0)
++            f.new_value = str(max(0, v))
++
++    def _decide_consent(self, q: Question) -> None:
++        boxes = [f for f in q.fields if f.type == "checkbox" and f.consent]
++        others = [f for f in q.fields if f.type in ("radio", "select-one")
++                  or (f.type == "checkbox" and not f.consent)]
++        if boxes and not others:
++            for f in boxes:
++                f.selected = True
++
++
++# --------------------------------------------------------------------------- #
++# helpers
++# --------------------------------------------------------------------------- #
++
++def _rows_of(q: Question) -> list[tuple[str, list[Field]]]:
++    rows: dict[str, list[Field]] = {}
++    order: list[str] = []
++    for f in q.fields:
++        if f.type in ("radio", "checkbox"):
++            if f.name not in rows:
++                rows[f.name] = []
++                order.append(f.name)
++            rows[f.name].append(f)
++    return [(n, rows[n]) for n in order]
++
++
++def _select_owner(option_field: Field, pool: list[Field]) -> Optional[Field]:
++    for f in pool:
++        if f.type == "select-one" and any(o is option_field for o in f.options):
++            return f
++    return None
++
++
++def _value_matches_label(value: str, label: str) -> bool:
++    from .instructions import _phrase_in
++    nv, nl = norm_label(value), norm_label(label)
++    if not nv or not nl:
++        return False
++    if nv == nl:
++        return True
++    return _phrase_in(nl, nv) or (len(nl) >= 3 and _phrase_in(nv, nl))
++
++
++def _is_other(f: Field) -> bool:
++    from .instructions import OTHER_RE
++    return bool(OTHER_RE.match((f.label or "").strip()))
++
++
++def _is_other_box(f: Field) -> bool:
++    name = (f.name or "").lower()
++    label = norm_label(f.label or "")
++    if "other" in name and f.type in ("text", "textarea"):
++        return True
++    if f.type in ("text", "textarea") and ("specify" in label or label == "other"):
++        return True
++    return False
++
++
++def _question_matches_kw(q: Question, kw) -> bool:
++    return norm_label(str(kw)) in norm_label(q.text)
++
++
++def _looks_number(s: str) -> bool:
++    try:
++        float(s)
++        return True
++    except ValueError:
++        return False
++
++
++def _looks_scalar_hint(hint: Hint) -> bool:
++    if not hint.targets:
++        return False
++    t = hint.targets[0]
++    if _looks_number(t):
++        return True
++    verb = re.match(r"^(enter|type|input|write|fill)", hint.raw, re.I)
++    return bool(verb)
++
++
++def _number_bounds(f: Field, q: Question, vcons: dict) -> tuple[Optional[float], Optional[float]]:
++    lo: Optional[float] = None
++    hi: Optional[float] = None
++    if f.min not in (None, ""):
++        try:
++            lo = float(f.min)
++        except ValueError:
++            lo = None
++    if f.max not in (None, ""):
++        try:
++            hi = float(f.max)
++        except ValueError:
++            hi = None
++    if "range" in vcons and lo is None and hi is None:
++        return vcons["range"]
++    m = _BETWEEN_RE.search(q.text)
++    if m:
++        return float(m.group(1)), float(m.group(2))
++    m = _TO_RANGE_RE.search(q.text)
++    if m and float(m.group(2)) > float(m.group(1)):
++        return float(m.group(1)), float(m.group(2))
++    if "range" in vcons:
++        return vcons["range"]
++    return lo, hi
++
++
++def _snap(val: float, f: Field) -> str:
++    try:
++        step = float(f.step) if f.step else 0.0
++    except ValueError:
++        step = 0.0
++    if step > 0:
++        lo = float(f.min) if f.min else 0.0
++        val = lo + round((val - lo) / step) * step
++    if val.is_integer():
++        return str(int(val))
++    return str(val)
++
++
++def _clamp(f: Field, value: Optional[str]) -> Optional[str]:
++    if value is None:
++        return None
++    if f.type == "number" and f.min not in (None, "") and f.max not in (None, ""):
++        try:
++            v = float(value)
++            v = max(float(f.min), min(float(f.max), v))
++            return str(int(v)) if v.is_integer() else str(v)
++        except ValueError:
++            return value
++    if f.maxlength and len(value) > f.maxlength:
++        value = value[: f.maxlength]
++    return value
+diff --git a/survey_flow/engines/__init__.py b/survey_flow/engines/__init__.py
+new file mode 100644
+index 0000000..d6e8e4f
+--- /dev/null
++++ b/survey_flow/engines/__init__.py
+@@ -0,0 +1,13 @@
++from .base import Engine, EngineError, EngineUnavailable, NoSubmitError, Session
++
++__all__ = ["Engine", "EngineError", "EngineUnavailable", "NoSubmitError", "Session"]
++
++
++def create_engine(name: str, headed: bool = False) -> Engine:
++    if name == "http":
++        from .http_engine import HttpEngine
++        return HttpEngine()
++    if name == "browser":
++        from .browser_engine import BrowserEngine
++        return BrowserEngine(headed=headed)
++    raise ValueError(f"unknown engine: {name}")
+diff --git a/survey_flow/engines/base.py b/survey_flow/engines/base.py
+new file mode 100644
+index 0000000..d682e51
+--- /dev/null
++++ b/survey_flow/engines/base.py
+@@ -0,0 +1,43 @@
++"""Engine interfaces: something that can fetch pages and submit answers."""
++
++from __future__ import annotations
++
++from ..models import Page
++
++
++class EngineError(Exception):
++    pass
++
++
++class NoSubmitError(EngineError):
++    pass
++
++
++class EngineUnavailable(EngineError):
++    pass
++
++
++class Session:
++    """One survey run (fresh cookies/context per run)."""
++
++    def fetch(self, url: str) -> tuple[str, str]:
++        """Return (html, final_url) for the initial page."""
++        raise NotImplementedError
++
++    def submit(self, page: Page) -> tuple[str, str]:
++        """Apply the decisions already written onto `page` and submit.
++
++        Returns (html, final_url) of the resulting page.
++        """
++        raise NotImplementedError
++
++    def close(self) -> None:
++        pass
++
++
++class Engine:
++    def new_session(self) -> Session:
++        raise NotImplementedError
++
++    def close(self) -> None:
++        pass
+diff --git a/survey_flow/engines/browser_engine.py b/survey_flow/engines/browser_engine.py
+new file mode 100644
+index 0000000..e7891f2
+--- /dev/null
++++ b/survey_flow/engines/browser_engine.py
+@@ -0,0 +1,161 @@
++"""Optional Playwright browser engine for JS-driven surveys.
++
++Requires (on the machine where the tool runs):
++    pip install -r requirements-browser.txt
++    playwright install chromium
++"""
++
++from __future__ import annotations
++
++import json
++import logging
++import re
++
++from ..models import Page
++from .base import Engine, EngineUnavailable, NoSubmitError, Session
++
++log = logging.getLogger("survey_flow.engine.browser")
++
++_NEXT_RE = re.compile(r"^(next|continue|weiter|›|»|>|→|next\s*>)$", re.I)
++_SUBMIT_RE = re.compile(r"^(submit|ok|done|finish|save|apply|go|start|begin|enter)$", re.I)
++
++_APPLY_JS = """
++([fields, submits]) => {
++  const all = document.querySelectorAll('input, select, textarea');
++  for (const spec of fields) {
++    const el = all[spec.i];
++    if (!el) continue;
++    if (el.type === 'radio' || el.type === 'checkbox') {
++      el.checked = !!spec.checked;
++    } else if (el.tagName === 'SELECT') {
++      if (spec.value !== null && spec.value !== undefined) el.value = spec.value;
++    } else {
++      if (spec.value !== null && spec.value !== undefined) el.value = spec.value;
++    }
++    el.dispatchEvent(new Event('input', {bubbles: true}));
++    el.dispatchEvent(new Event('change', {bubbles: true}));
++  }
++  return submits;
++}
++"""
++
++
++class BrowserEngine(Engine):
++    def __init__(self, headed: bool = False, timeout_ms: int = 30000):
++        try:
++            from playwright.sync_api import sync_playwright
++        except ImportError as e:
++            raise EngineUnavailable(
++                "playwright is not installed. Install the browser engine with:\n"
++                "  pip install -r requirements-browser.txt && playwright install chromium"
++            ) from e
++        self._pw = sync_playwright().start()
++        try:
++            self.browser = self._pw.chromium.launch(headless=not headed)
++        except Exception as e:
++            self._pw.stop()
++            raise EngineUnavailable(
++                "chromium is not available. Run: playwright install chromium\n"
++                f"(original error: {e})"
++            ) from e
++        self.timeout_ms = timeout_ms
++
++    def new_session(self) -> Session:
++        return BrowserSession(self, self.browser)
++
++    def close(self) -> None:
++        try:
++            self.browser.close()
++        finally:
++            self._pw.stop()
++
++
++class BrowserSession(Session):
++    def __init__(self, engine: BrowserEngine, browser):
++        self.engine = engine
++        self.ctx = browser.new_context()
++        self.page = self.ctx.new_page()
++
++    def fetch(self, url: str) -> tuple[str, str]:
++        self.page.goto(url, wait_until="domcontentloaded", timeout=self.engine.timeout_ms)
++        self._settle()
++        return self.page.content(), self.page.url
++
++    def submit(self, page: Page) -> tuple[str, str]:
++        fields = []
++        for q in page.questions:
++            for f in q.fields:
++                if f.type in ("radio", "checkbox"):
++                    fields.append({"i": f.dom_index, "checked": bool(f.selected)})
++                elif f.type in ("select-one", "select-multiple", "text", "textarea",
++                                "number", "range", "date", "time", "datetime-local"):
++                    if f.new_value is not None:
++                        fields.append({"i": f.dom_index, "value": f.new_value})
++        # hidden inputs keep their DOM values (already present)
++        submits = [{"i": s.dom_index, "name": s.name, "value": s.value, "label": s.label}
++                   for s in page.submits]
++        try:
++            self.page.evaluate(_APPLY_JS, [fields, submits])
++        except Exception as e:
++            raise NoSubmitError(f"failed to fill page via browser engine: {e}") from e
++
++        target = self._pick_submit(page)
++        if target is None:
++            raise NoSubmitError(f"no submit control found on {page.url}")
++        try:
++            with self.page.expect_navigation(timeout=8000):
++                target.click(force=True, timeout=8000)
++        except Exception:
++            # some pages update in place (AJAX) - just give them a moment
++            self.page.wait_for_timeout(1200)
++        self._settle()
++        return self.page.content(), self.page.url
++
++    def _pick_submit(self, page: Page):
++        if not page.submits:
++            return None
++        chosen = None
++        for s in page.submits:
++            if _NEXT_RE.match((s.label or s.value or "").strip()):
++                chosen = s
++                break
++        if chosen is None:
++            for s in page.submits:
++                if _SUBMIT_RE.match((s.label or s.value or "").strip()):
++                    chosen = s
++                    break
++        if chosen is None:
++            chosen = page.submits[0]
++        if chosen.name:
++            loc = self.page.locator(
++                f'input[name={json.dumps(chosen.name)}], button[name={json.dumps(chosen.name)}]'
++            )
++            if loc.count():
++                return loc.first
++        if chosen.value:
++            loc = self.page.locator(
++                f'input[type="submit"][value={json.dumps(chosen.value)}], '
++                f'button:has-text({json.dumps(chosen.value)})'
++            )
++            if loc.count():
++                return loc.first
++        if chosen.label:
++            loc = self.page.locator(
++                f'button:has-text({json.dumps(chosen.label)}), '
++                f'input[type="submit"][value={json.dumps(chosen.label)}]'
++            )
++            if loc.count():
++                return loc.first
++        return None
++
++    def _settle(self) -> None:
++        try:
++            self.page.wait_for_load_state("networkidle", timeout=5000)
++        except Exception:
++            pass
++
++    def close(self) -> None:
++        try:
++            self.ctx.close()
++        except Exception:
++            pass
+diff --git a/survey_flow/engines/http_engine.py b/survey_flow/engines/http_engine.py
+new file mode 100644
+index 0000000..cbfe9c3
+--- /dev/null
++++ b/survey_flow/engines/http_engine.py
+@@ -0,0 +1,120 @@
++"""Plain-HTTP engine (requests): works for classic Confirmit/Forsta forms
++without JavaScript.  Each session keeps its own cookie jar, so every run is a
++fresh respondent."""
++
++from __future__ import annotations
++
++import logging
++import re
++from collections import defaultdict
++from urllib.parse import urljoin
++
++import requests
++
++from ..models import Page, SubmitControl
++from .base import Engine, NoSubmitError, Session
++
++log = logging.getLogger("survey_flow.engine.http")
++
++UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
++      "Chrome/122.0.0.0 Safari/537.36")
++
++_NEXT_RE = re.compile(r"^(next|continue|weiter|›|»|>|→|next\s*>)$", re.I)
++_SUBMIT_RE = re.compile(r"^(submit|ok|done|finish|save|apply|go|start|begin|enter)$", re.I)
++
++_SCALAR_TYPES = {"text", "textarea", "number", "range", "date", "time", "datetime-local"}
++
++
++class HttpEngine(Engine):
++    def new_session(self) -> Session:
++        return HttpSession()
++
++    def close(self) -> None:
++        pass
++
++
++class HttpSession(Session):
++    def __init__(self, timeout: float = 60.0):
++        self.s = requests.Session()
++        self.s.headers.update({
++            "User-Agent": UA,
++            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
++            "Accept-Language": "en-US,en;q=0.9",
++        })
++        self.timeout = timeout
++
++    def fetch(self, url: str) -> tuple[str, str]:
++        r = self.s.get(url, timeout=self.timeout, allow_redirects=True)
++        r.raise_for_status()
++        return r.text, r.url
++
++    def submit(self, page: Page) -> tuple[str, str]:
++        action = urljoin(page.url, page.form_action or page.url)
++        data: dict = {}
++        multi: dict[str, list] = defaultdict(list)
++
++        def put(name: str, value: str) -> None:
++            if not name:
++                return
++            multi[name].append(value)
++
++        for name, value in page.hiddens:
++            put(name, value)
++
++        for q in page.questions:
++            for f in q.fields:
++                if f.type in ("radio", "checkbox"):
++                    if f.selected:
++                        put(f.name, f.value)
++                elif f.type == "select-one":
++                    v = f.new_value if f.new_value is not None else f.value
++                    if f.name:
++                        put(f.name, v if v is not None else "")
++                elif f.type == "select-multiple":
++                    if f.new_value is not None:
++                        put(f.name, f.new_value)
++                    else:
++                        for o in f.options:
++                            if o.checked:
++                                put(f.name, o.value)
++                elif f.type in _SCALAR_TYPES:
++                    if f.name:
++                        v = f.new_value if f.new_value is not None else (f.value or "")
++                        put(f.name, v)
++
++        for name, values in multi.items():
++            data[name] = values[0] if len(values) == 1 else values
++
++        sc = choose_submit(page)
++        if sc is None:
++            raise NoSubmitError(
++                "no submit control found on page "
++                f"({page.url}); try --engine browser for JS-driven surveys"
++            )
++        if sc.name:
++            data[sc.name] = sc.value if sc.value else (sc.label or "")
++
++        method = (page.form_method or "POST").upper()
++        log.debug("submit %s %s via %r", method, action, sc.label)
++        if method == "GET":
++            r = self.s.get(action, params=data, timeout=self.timeout, allow_redirects=True)
++        else:
++            r = self.s.post(action, data=data, timeout=self.timeout, allow_redirects=True)
++        r.raise_for_status()
++        return r.text, r.url
++
++
++def choose_submit(page: Page) -> SubmitControl | None:
++    if not page.submits:
++        return None
++    for s in page.submits:
++        if _NEXT_RE.match((s.label or s.value or "").strip()):
++            return s
++    for s in page.submits:
++        if _SUBMIT_RE.match((s.label or s.value or "").strip()):
++            return s
++    # prefer an <input type=submit> over <button>
++    for s in page.submits:
++        if s.tag == "input":
++            return s
++    return page.submits[0]
+diff --git a/survey_flow/instructions.py b/survey_flow/instructions.py
+new file mode 100644
+index 0000000..747da34
+--- /dev/null
++++ b/survey_flow/instructions.py
+@@ -0,0 +1,363 @@
++"""Red/bold instruction detection and parsing (rule-based, no AI).
++
++Two responsibilities:
++  1. detect_red_bold()  - is this element a red (optionally bold) instruction?
++  2. parse_instruction() - turn instruction text into an answer hint, then
++     match the hint against the question's actual options.
++"""
++
++from __future__ import annotations
++
++import re
++import unicodedata
++from dataclasses import dataclass, field
++from difflib import SequenceMatcher
++from typing import Optional
++
++# --------------------------------------------------------------------------- #
++# label helpers
++# --------------------------------------------------------------------------- #
++
++_PUNCT_RE = re.compile(r"[^\w\s%$€£+/&.'-]", re.UNICODE)
++_WS_RE = re.compile(r"\s+")
++
++
++def norm_label(s: str) -> str:
++    """Normalize a label for fuzzy comparison."""
++    s = unicodedata.normalize("NFKC", s or "")
++    s = s.casefold()
++    s = s.replace("'", "").replace("\u2019", "")   # don't -> dont
++    s = _PUNCT_RE.sub(" ", s)
++    s = _WS_RE.sub(" ", s).strip()
++    return s
++
++
++def _phrase_in(haystack: str, needle: str) -> bool:
++    """Word-boundary phrase containment on normalized strings."""
++    if not haystack or not needle:
++        return False
++    return re.search(r"(?<!\w)" + re.escape(needle) + r"(?!\w)", haystack) is not None
++
++
++# special answer options -----------------------------------------------------
++EXCLUSIVE_RE = re.compile(
++    r"(none\s+of\s+(these|them|those|the\s+above)|"
++    r"do\s+n[o']t\s+know|don'?t\s+know|dont\s+know|"
++    r"not\s+sure|no\s+opinion|no\s+answer|no\s+response|"
++    r"not\s+applicable|n/?a\b|"
++    r"prefer\s+not\s+to\s+(answer|say|disclose|state|tell)|"
++    r"rather\s+not\s+(answer|say)|refus(?:e|ed|al)|"
++    r"i\s+have\s+not\s+(used|seen|purchased|heard)|"
++    r"have\s+n[o']t\s+used|nothing|neither)",
++    re.I,
++)
++
++OTHER_RE = re.compile(r"^(other|none of these above|other\s*\(.*\)|.*\bspecify\b.*|other[:.\s-].*)$", re.I)
++
++CONSENT_RE = re.compile(
++    r"\b(i\s+(agree|consent)|agree\s+to|consent|accept(s|ed)?\s+(the\s+)?(terms|policy)|"
++    r"yes[,\s-]+i\s+(agree|accept))\b",
++    re.I,
++)
++
++# validation messages must never be treated as answer instructions
++VALIDATIONISH_RE = re.compile(
++    r"(please\s+(answer|enter|select|provide|choose|fill|specify|type|check)|"
++    r"is\s+required|invalid|at\s+least\s+\d+|too\s+(long|short)|must\s+be|"
++    r"out\s+of\s+range|no\s+answer\s+(selected|given))",
++    re.I,
++)
++
++PLACEHOLDER_OPTION_RE = re.compile(
++    r"^(\s*-{2,}\s*.*|select\s+(one|an?\s+option|please).*|please\s+select.*|"
++    r"choose\s+.*|\[.*\]|--.*)$",
++    re.I,
++)
++
++
++# --------------------------------------------------------------------------- #
++# red / bold detection (works off inline styles, font tags, classes - no JS)
++# --------------------------------------------------------------------------- #
++
++_COLOR_NAMES = {
++    "red": (255, 0, 0),
++    "crimson": (220, 20, 60),
++    "firebrick": (178, 34, 34),
++    "darkred": (139, 0, 0),
++    "tomato": (255, 99, 71),
++    "indianred": (205, 92, 92),
++}
++
++
++def _parse_color(value: str) -> Optional[tuple[int, int, int]]:
++    value = (value or "").strip().lower()
++    if not value:
++        return None
++    if value in _COLOR_NAMES:
++        return _COLOR_NAMES[value]
++    if value.startswith("#"):
++        h = value[1:]
++        if len(h) == 3:
++            h = "".join(c * 2 for c in h)
++        if len(h) == 6:
++            try:
++                return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
++            except ValueError:
++                return None
++    m = re.match(r"rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})", value)
++    if m:
++        return int(m.group(1)), int(m.group(2)), int(m.group(3))
++    return None
++
++
++def _is_red(rgb: tuple[int, int, int]) -> bool:
++    r, g, b = rgb
++    return r >= 150 and g <= 100 and b <= 100 and (r - max(g, b)) >= 70
++
++
++def _style_of(tag) -> str:
++    return (tag.get("style") or "").replace(" ", "").lower()
++
++
++def _color_from_style(style: str) -> Optional[tuple[int, int, int]]:
++    m = re.search(r"(?:^|;)color:([^;]+)", style)
++    if m:
++        return _parse_color(m.group(1))
++    return None
++
++
++def _bold_from_style(style: str) -> bool:
++    m = re.search(r"(?:^|;)font-weight:([^;]+)", style)
++    if not m:
++        return False
++    v = m.group(1).strip().lower()
++    if v in ("bold", "bolder"):
++        return True
++    try:
++        return int(v) >= 600
++    except ValueError:
++        return False
++
++
++def element_color_bold(tag, stop_tag=None) -> tuple[bool, bool]:
++    """Walk `tag` and its ancestors (up to stop_tag) for red & bold signals.
++
++    Returns (is_red, is_bold).  A `<span style="color:red"><b>text</b></span>`
++    is red (from the span) and bold (from the inner b) - handled by checking
++    the full ancestor chain of the *text* element.
++    """
++    red = bold = False
++    node = tag
++    depth = 0
++    while node is not None and node is not getattr(stop_tag, "name", None) and depth < 6:
++        name = getattr(node, "name", None)
++        style = _style_of(node) if hasattr(node, "get") else ""
++        color = _color_from_style(style)
++        if color and _is_red(color):
++            red = True
++        if name in ("b", "strong") or _bold_from_style(style):
++            bold = True
++        # <font color="red">
++        if name == "font" and _parse_color(node.get("color") or "") is not None:
++            if _is_red(_parse_color(node.get("color") or "")):
++                red = True
++        # class tokens
++        classes = " ".join(node.get("class") or []) if hasattr(node, "get") else ""
++        lowc = classes.lower()
++        if "red" in lowc and ("bold" in lowc or "instruction" in lowc):
++            red = True
++        if "bold" in lowc:
++            bold = True
++        parent = getattr(node, "parent", None)
++        node = parent
++        depth += 1
++        if stop_tag is not None and node is stop_tag:
++            break
++    return red, bold
++
++
++def detect_red_bold(tag, stop_tag=None) -> tuple[bool, bool]:
++    """Is this element itself a red/bold instruction carrier?
++
++    Checks the element's own text (not deep children) so nested markup like
++    `<span style="color:#f00"><b>text</b></span>` reports red+bold when asked
++    about the span, and red+bold when asked about the b (via ancestors).
++    """
++    return element_color_bold(tag, stop_tag)
++
++
++# --------------------------------------------------------------------------- #
++# instruction parsing
++# --------------------------------------------------------------------------- #
++
++@dataclass
++class Hint:
++    kind: str = "options"             # options | text | number | none
++    targets: list[str] = field(default_factory=list)
++    numbers: list[float] = field(default_factory=list)
++    raw: str = ""
++
++
++_QUOTE_RE = re.compile(r"""['"“”„`]\s*([^'"“”„`]{1,80}?)\s*['"“”„`]""")
++_VERB_RE = re.compile(
++    r"\b(?:select|choose|pick|click(?:\s+on)?|answer|mark|tap|opt\s+for|go\s+with|"
++    r"enter|type|input|fill\s+in|write|set)\b",
++    re.I,
++)
++_VERB_TAIL_RE = re.compile(
++    r"\b(?:(?:select|choose|pick|click(?:\s+on)?|answer|mark|tap|opt\s+for|go\s+with|"
++    r"enter(?:\s+a\s+number|\s+an?\s+age)?|type|input|fill\s+in|write|set)\b)"
++    r"(?:\s+(?:the|an?\s+one|exactly\s+one|one|all|each|only))?"
++    r"\s*(?:option|answer|button|response|value|choice|item)?\s*"
++    r"(?:[:\-\u2013\u2014]\s*|\s+)?(.+?)(?:[.!?,;]|$)",
++    re.I,
++)
++_COLON_SPLIT_RE = re.compile(r"[:\u2013\u2014]\s*")
++_PART_SPLIT_RE = re.compile(r"\s*(?:,|;|\band\b|\bor\b|&|\balso\b)\s*", re.I)
++_NUMBER_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
++
++# verbs that mean "type text" rather than "pick an option"
++_TEXT_VERBS_RE = re.compile(r"\b(enter|type|input|write|fill\s+in)\b", re.I)
++# phrases that are guidance, not an answer target
++_GUIDANCE_RE = re.compile(
++    r"\b(avoid|do\s+n[o']t|don'?t|never|make\s+sure|remember|be\s+sure|"
++    r"answer\s+(honestly|truthfully)|pick\s+(one|any)\b)",
++    re.I,
++)
++
++
++def parse_instruction(text: str) -> Hint:
++    """Turn an instruction sentence into a Hint (targets to match against options)."""
++    raw = " ".join((text or "").split())
++    if not raw:
++        return Hint(kind="none")
++
++    hint = Hint(raw=raw)
++
++    # explicit text entry:  enter: "some text"  /  type: abc
++    if _TEXT_VERBS_RE.search(raw) and _COLON_SPLIT_RE.search(raw):
++        after = _COLON_SPLIT_RE.split(raw, 1)[1].strip()
++        after = after.strip("'\"“”")
++        if after:
++            hint.kind = "text"
++            hint.targets = [after]
++            return hint
++
++    candidates: list[str] = []
++    quoted = [q.strip() for q in _QUOTE_RE.findall(raw)]
++    candidates.extend(quoted)
++
++    parts = _COLON_SPLIT_RE.split(raw, 1)
++    if len(parts) == 2 and parts[1].strip():
++        candidates.append(parts[1].strip())
++
++    m = _VERB_TAIL_RE.search(raw)
++    if m and m.group(1):
++        candidates.append(m.group(1).strip())
++
++    # whole string if short and looks like an answer, not guidance
++    if not candidates and len(raw) <= 60 and not _GUIDANCE_RE.search(raw) and not _VERB_RE.search(raw):
++        candidates.append(raw)
++
++    # expand multi-targets
++    expanded: list[str] = []
++    for c in candidates:
++        c = c.strip(" .;:!?")
++        for piece in _PART_SPLIT_RE.split(c):
++            piece = piece.strip(" .;:!?'\"“”")
++            if piece:
++                expanded.append(piece)
++
++    # numbers present?
++    for piece in expanded:
++        if _NUMBER_RE.match(piece):
++            try:
++                hint.numbers.append(float(piece))
++            except ValueError:
++                pass
++
++    hint.targets = expanded
++    if not expanded and hint.numbers:
++        hint.kind = "number"
++    elif expanded:
++        hint.kind = "options"
++    else:
++        hint.kind = "none"
++    return hint
++
++
++def match_targets_to_options(targets: list[str], numbers: list[float],
++                             option_fields: list, question_kind: str) -> list:
++    """Return the option fields matched by hint targets/numbers.
++
++    Matching: exact normalized > substring (either way) > fuzzy ratio >= 0.80.
++    Numbers match an option whose label equals the number, or its position
++    (1-based) for ordinal scales / NPS.
++    """
++    matched: list = []
++    seen: set[int] = set()
++
++    def add(f) -> None:
++        if id(f) not in seen:
++            seen.add(id(f))
++            matched.append(f)
++
++    # normalize option labels once
++    opts = [(f, norm_label(f.label or f.value)) for f in option_fields]
++
++    for t in targets:
++        nt = norm_label(t)
++        if not nt:
++            continue
++        # exact
++        exact = [f for f, no in opts if no == nt]
++        if exact:
++            for f in exact:
++                add(f)
++            continue
++        # phrase containment either way (word-boundary: "male" must NOT
++        # match inside "female")
++        subs = [f for f, no in opts
++                if len(nt) >= 3 and (_phrase_in(no, nt) or (len(no) >= 3 and _phrase_in(nt, no)))]
++        if subs:
++            for f in subs[:4]:
++                add(f)
++            continue
++        # fuzzy (strict: "male"/"female" scores exactly 0.8)
++        best, best_ratio = None, 0.0
++        for f, no in opts:
++            r = SequenceMatcher(None, nt, no).ratio()
++            if r > best_ratio:
++                best, best_ratio = f, r
++        if best is not None and best_ratio >= 0.86:
++            add(best)
++
++    # numeric targets: label equals number, or 1-based position (NPS/ordinal)
++    for n in hintless_number_iter(numbers):
++        want = str(int(n)) if float(n).is_integer() else str(n)
++        label_hits = [f for f, no in opts if no == norm_label(want)]
++        if label_hits:
++            for f in label_hits:
++                add(f)
++            continue
++        idx = int(n) if n >= 0 else -1
++        if question_kind in ("single", "grid_single", "nps", "rating", "ranking", "dropdown") \
++                and 1 <= idx <= len(opts):
++            add(opts[idx - 1][0])
++
++    return matched
++
++
++def hintless_number_iter(numbers: list[float]):
++    return numbers
++
++
++def labels_match(a: str, b: str) -> bool:
++    na, nb = norm_label(a), norm_label(b)
++    if not na or not nb:
++        return False
++    if na == nb:
++        return True
++    if len(na) >= 3 and (_phrase_in(nb, na) or _phrase_in(na, nb)):
++        return True
++    return SequenceMatcher(None, na, nb).ratio() >= 0.86
+diff --git a/survey_flow/memory.py b/survey_flow/memory.py
+new file mode 100644
+index 0000000..3b742a2
+--- /dev/null
++++ b/survey_flow/memory.py
+@@ -0,0 +1,220 @@
++"""Persistent memory of selections that ended a run (terminate / quota-full).
++
++Stored as JSON so learning survives restarts.  Questions are identified by a
++stable signature, options by their normalized label (option order can be
++randomized between sessions, labels cannot).
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import tempfile
++import time
++from dataclasses import dataclass, field
++from pathlib import Path
++from .instructions import norm_label
++
++DEFAULT_MEMORY_PATH = "survey_memory.json"
++# statuses whose selections should be avoided on future runs
++AVOIDABLE = ("terminate", "quota_full")
++
++
++@dataclass
++class QuestionMemory:
++    text: str = ""
++    seen: int = 0
++    ends: dict = field(default_factory=dict)   # option identity -> record
++
++
++class TerminateMemory:
++    def __init__(self, path: str = DEFAULT_MEMORY_PATH, avoid: tuple[str, ...] = AVOIDABLE):
++        self.path = Path(path)
++        self.avoid = tuple(avoid)
++        self.data: dict = {"version": 1, "questions": {}, "stats": self._new_stats()}
++        self.load()
++
++    # ------------------------------------------------------------------ #
++    @staticmethod
++    def _new_stats() -> dict:
++        return {
++            "runs": 0,
++            "completes": 0,
++            "terminates": 0,
++            "quota_full": 0,
++            "validations": 0,
++            "stuck": 0,
++            "last_run": None,
++        }
++
++    def load(self) -> None:
++        if self.path.exists():
++            try:
++                loaded = json.loads(self.path.read_text(encoding="utf-8"))
++                if isinstance(loaded, dict) and "questions" in loaded:
++                    self.data = loaded
++                    self.data.setdefault("stats", self._new_stats())
++            except (json.JSONDecodeError, OSError):
++                # keep a corrupt file aside instead of losing it
++                try:
++                    self.path.replace(self.path.with_suffix(".corrupt.json"))
++                except OSError:
++                    pass
++                self.data = {"version": 1, "questions": {}, "stats": self._new_stats()}
++
++    def save(self) -> None:
++        self.path.parent.mkdir(parents=True, exist_ok=True)
++        payload = json.dumps(self.data, indent=2, ensure_ascii=False)
++        # atomic write
++        fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), suffix=".tmp")
++        try:
++            with os.fdopen(fd, "w", encoding="utf-8") as fh:
++                fh.write(payload)
++            os.replace(tmp, self.path)
++        finally:
++            if os.path.exists(tmp):
++                try:
++                    os.remove(tmp)
++                except OSError:
++                    pass
++
++    # ------------------------------------------------------------------ #
++    def note_seen(self, sig: str, text: str = "") -> None:
++        q = self.data["questions"].setdefault(sig, {"text": text, "seen": 0, "ends": {}})
++        if text and not q.get("text"):
++            q["text"] = text
++        q["seen"] = int(q.get("seen", 0)) + 1
++
++    def mark_end(
++        self,
++        sig: str,
++        text: str,
++        chosen: list[dict],
++        status: str,
++        *,
++        url: str = "",
++        message: str = "",
++    ) -> list[str]:
++        """Record the choices that coincided with a run-ending status.
++
++        `chosen` is a list of {"label": ..., "value": ..., "identity": ...}.
++        Returns the identities recorded.
++        """
++        q = self.data["questions"].setdefault(sig, {"text": text, "seen": 0, "ends": {}})
++        if text:
++            q["text"] = text
++        recorded = []
++        for c in chosen:
++            ident = c.get("identity")
++            if not ident:
++                if c.get("label"):
++                    ident = "l:" + norm_label(c["label"])
++                elif c.get("value"):
++                    ident = "v:" + c["value"]
++                else:
++                    continue
++            rec = q["ends"].setdefault(ident, {
++                "label": c.get("label", ""),
++                "value": c.get("value", ""),
++                "count": 0,
++                "statuses": {},
++            })
++            rec["count"] = int(rec.get("count", 0)) + 1
++            sts = rec.setdefault("statuses", {})
++            sts[status] = int(sts.get(status, 0)) + 1
++            rec["last_status"] = status
++            rec["last_url"] = url
++            rec["last_message"] = message[:300]
++            rec["last_ts"] = time.strftime("%Y-%m-%dT%H:%M:%S")
++            recorded.append(ident)
++        stat_key = "terminates" if status == "terminate" else status
++        stats = self.data.setdefault("stats", self._new_stats())
++        stats[stat_key] = int(stats.get(stat_key, 0)) + 1
++        return recorded
++
++    # ------------------------------------------------------------------ #
++    def is_fatal(self, sig: str, identity: str, label: str = "", value: str = "") -> bool:
++        """Should future runs avoid this option for this question?"""
++        q = self.data["questions"].get(sig)
++        if not q:
++            return False
++        ends = q.get("ends", {})
++        keys = [identity]
++        if label:
++            keys.append("l:" + norm_label(label))
++        if value:
++            keys.append("v:" + value)
++        for k in keys:
++            if k in ends:
++                rec = ends[k]
++                statuses = rec.get("statuses") or {}
++                status = rec.get("last_status")
++                if any(s in self.avoid for s in statuses) or (status in self.avoid):
++                    return True
++        return False
++
++    def fatal_options(self, sig: str) -> dict:
++        """identity -> record, restricted to avoid-worthy statuses."""
++        q = self.data["questions"].get(sig)
++        if not q:
++            return {}
++        out = {}
++        for ident, rec in q.get("ends", {}).items():
++            statuses = rec.get("statuses") or {}
++            status = rec.get("last_status")
++            if any(s in self.avoid for s in statuses) or (status in self.avoid):
++                out[ident] = rec
++        return out
++
++    def all_fatal(self, sig: str) -> bool:
++        """True when at least one avoidable end exists (per-question flag)."""
++        return bool(self.fatal_options(sig))
++
++    # ------------------------------------------------------------------ #
++    def set_learned(self, sig: str, key: str, value) -> None:
++        """Persist a lesson from a validation message (e.g. min_select=4)."""
++        q = self.data["questions"].setdefault(sig, {"text": "", "seen": 0, "ends": {}})
++        learned = q.setdefault("learned", {})
++        learned[key] = value
++
++    def learned(self, sig: str, key: str, default=None):
++        q = self.data["questions"].get(sig) or {}
++        return (q.get("learned") or {}).get(key, default)
++
++    # ------------------------------------------------------------------ #
++    def bump(self, key: str, n: int = 1) -> None:
++        stats = self.data.setdefault("stats", self._new_stats())
++        stats[key] = int(stats.get(key, 0)) + n
++
++    @property
++    def stats(self) -> dict:
++        return self.data.setdefault("stats", self._new_stats())
++
++    def summary_lines(self) -> list[str]:
++        lines = []
++        s = self.stats
++        lines.append(
++            f"runs={s.get('runs', 0)} completes={s.get('completes', 0)} "
++            f"terminates={s.get('terminates', 0)} quota_full={s.get('quota_full', 0)} "
++            f"validations={s.get('validations', 0)} stuck={s.get('stuck', 0)}"
++        )
++        qs = self.data.get("questions", {})
++        if not qs:
++            lines.append("no remembered terminate selections yet")
++            return lines
++        lines.append(f"{len(qs)} question(s) with remembered end selections:")
++        for sig, q in qs.items():
++            fatal = self.fatal_options(sig)
++            if not fatal:
++                continue
++            text = (q.get("text") or sig)[:70]
++            labels = ", ".join(
++                (r.get("label") or r.get("value") or ident)
++                for ident, r in fatal.items()
++            )
++            lines.append(f"  [{sig}] {text!r} -> avoid: {labels}")
++        return lines
++
++    def clear(self) -> None:
++        self.data = {"version": 1, "questions": {}, "stats": self._new_stats()}
++        self.save()
+diff --git a/survey_flow/models.py b/survey_flow/models.py
+new file mode 100644
+index 0000000..6445951
+--- /dev/null
++++ b/survey_flow/models.py
+@@ -0,0 +1,166 @@
++"""Data models shared across analyzer, decider, engines and runner."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Optional
++
++
++class Outcome(str, Enum):
++    """Classification of the page the tool is currently on."""
++
++    QUESTION = "question"
++    INTERSTITIAL = "interstitial"      # start / continue-only page
++    VALIDATION = "validation"          # question page carrying validation errors
++    COMPLETE = "complete"
++    TERMINATE = "terminate"
++    QUOTA_FULL = "quota_full"
++    UNKNOWN = "unknown"
++
++
++@dataclass
++class Field:
++    """A single form control, in DOM order."""
++
++    dom_index: int                    # index among input/select/textarea tags
++    name: str
++    type: str                         # radio|checkbox|select-one|select-multiple|text|
++                                      # textarea|number|range|date|time|hidden|submit|...
++    label: str = ""
++    value: str = ""                   # current/original value (options: their value)
++    checked: bool = False             # original checked state
++    row_label: str = ""               # for grids: the row header text
++    min: Optional[str] = None
++    max: Optional[str] = None
++    step: Optional[str] = None
++    maxlength: Optional[int] = None
++    minlength: Optional[int] = None
++    placeholder: Optional[str] = None
++    pattern: Optional[str] = None
++    required: bool = False
++    exclusive: bool = False           # "None of these", "Don't know", ...
++    consent: bool = False             # consent/agree checkbox
++    is_placeholder_option: bool = False  # "-- Select --" style dropdown option
++    options: list["Field"] = field(default_factory=list)  # for selects: their options
++    # decision output ------------------------------------------------------
++    selected: bool = False            # checkbox/radio: should be selected
++    new_value: Optional[str] = None   # scalar/select: value to send
++
++    @property
++    def identity(self) -> str:
++        """Stable identity used by the terminate-memory."""
++        from .instructions import norm_label
++
++        if self.label:
++            return "l:" + norm_label(self.label)
++        if self.value:
++            return "v:" + self.value
++        return "n:" + self.name
++
++    def chosen_identity(self) -> Optional[str]:
++        """Identity of this field's chosen answer (None when not chosen)."""
++        if self.type in ("radio", "checkbox"):
++            return self.identity if self.selected else None
++        if self.type == "select-one" and self.new_value is not None:
++            opt = next((o for o in self.options if o.value == self.new_value), None)
++            if opt is not None:
++                return opt.identity
++            return "v:" + self.new_value
++        if self.type == "select-multiple":
++            return None
++        return None
++
++    @property
++    def chosen_option(self) -> Optional["Field"]:
++        """For a select: the option Field that was chosen."""
++        if self.type != "select-one" or self.new_value is None:
++            return None
++        return next((o for o in self.options if o.value == self.new_value), None)
++
++
++@dataclass
++class Question:
++    """One question (cluster of fields) on the current page."""
++
++    sig: str                          # stable signature (container id / name base / text hash)
++    text: str
++    kind: str                         # single|multi|dropdown|text|number|slider|date|time|
++                                      # grid_single|grid_multi|ranking|constant_sum|unknown
++    fields: list[Field] = field(default_factory=list)
++    instructions: list[str] = field(default_factory=list)   # red(-and-bold) instruction texts
++    notes: list[str] = field(default_factory=list)          # plain instruction texts
++    qid: str = ""
++    min_select: int = 1
++    max_select: Optional[int] = None
++    total: Optional[int] = None       # constant-sum total
++    validation: list[str] = field(default_factory=list)     # validation messages for this page
++
++    @property
++    def is_choice(self) -> bool:
++        return self.kind in (
++            "single", "multi", "dropdown", "grid_single",
++            "grid_multi", "ranking", "rating", "nps",
++        )
++
++    @property
++    def choices(self) -> list[Field]:
++        return [f for f in self.fields if f.type in ("radio", "checkbox")
++                or f.type in ("select-one", "select-multiple")]
++
++    @property
++    def scalars(self) -> list[Field]:
++        return [f for f in self.fields if f.type in
++                ("text", "textarea", "number", "range", "date", "time", "datetime-local")]
++
++    @property
++    def chosen_options(self) -> list[Field]:
++        """The option-level fields actually chosen (selects resolve to their option)."""
++        out: list[Field] = []
++        for f in self.fields:
++            if f.type in ("radio", "checkbox") and f.selected:
++                out.append(f)
++            elif f.type == "select-one" and f.new_value is not None:
++                opt = f.chosen_option
++                out.append(opt if opt is not None else f)
++        return out
++
++    @property
++    def value_texts(self) -> list[str]:
++        """Human-readable descriptions of what was chosen."""
++        out = []
++        for f in self.chosen_options:
++            out.append(f.label or f.new_value or f.value)
++        for f in self.scalars:
++            if f.new_value not in (None, ""):
++                out.append(f"{f.label or f.name}={f.new_value}")
++        return out
++
++
++@dataclass
++class SubmitControl:
++    name: str
++    value: str
++    label: str
++    dom_index: int
++    tag: str = "input"                # input|button
++
++
++@dataclass
++class Page:
++    """Fully analyzed page."""
++
++    url: str
++    outcome: Outcome
++    questions: list[Question] = field(default_factory=list)
++    messages: list[str] = field(default_factory=list)     # end-status / validation messages
++    hiddens: list[tuple[str, str]] = field(default_factory=list)
++    submits: list[SubmitControl] = field(default_factory=list)
++    form_action: str = ""
++    form_method: str = "POST"
++    js_heavy: bool = False            # page looks JS-driven (no classic form)
++
++    @property
++    def signature(self) -> str:
++        """Cheap identity of this page state, used for stall detection."""
++        return "|".join(q.sig for q in self.questions) or f"{self.outcome.value}:{self.url}"
+diff --git a/survey_flow/outcomes.py b/survey_flow/outcomes.py
+new file mode 100644
+index 0000000..cc63e5d
+--- /dev/null
++++ b/survey_flow/outcomes.py
+@@ -0,0 +1,143 @@
++"""Classify a page: question / validation / interstitial / complete / terminate / quota-full.
++
++Pure text heuristics — no AI.  Detection order matters: an end page often still
++says "Thank you", so terminate and quota signals are checked first.
++"""
++
++from __future__ import annotations
++
++import re
++from typing import Optional
++
++QUOTA_PATTERNS = [
++    re.compile(r"quota[^\n]{0,40}(full|reached|limit|exceeded|already\s*(been\s*)?filled)"),
++    re.compile(r"(over|over[- ])?quota[- ]full"),
++    re.compile(r"you\s+(have\s+)?(been\s+)?over\s*quota"),
++    re.compile(r"the\s+quota\s+(for|cell)[^\n]{0,60}(full|reached)"),
++    re.compile(r"too\s+many\s+(respondents|participants|answers|completions)"),
++    re.compile(r"quota-?full|overquota"),
++]
++
++TERMINATE_PATTERNS = [
++    # end-page phrasings (context required so question text like
++    # "Have you ever been terminated?" never matches)
++    re.compile(r"\b(survey|interview|session|screening|screen|respondent)[^\n]{0,40}terminat"),
++    re.compile(r"\byou\s+have\s+been\s+terminat"),
++    re.compile(r"\byou\s+(?:are|were|will\s+be)\s+terminat"),
++    re.compile(r"\bwe\s+(?:must|have\s+to|need\s+to)\s+terminat"),
++    re.compile(r"\bterminat(?:e|ed|ion)\s+(?:page|screen|status|message|point|here|now)"),
++    re.compile(r"\bdisqualifi(?:ed|cation)\b"),
++    re.compile(r"\bscreened\s+out\b"),
++    re.compile(r"\byou\s+(?:are|were|have\s+been)\s+not\s+qualifi"),
++    re.compile(r"\bnot\s+qualifi(?:ed|er)\b"),
++    re.compile(r"\bdo(?:es)?\s+not\s+qualify\b"),
++    re.compile(r"\b(do|does|did)\s+n[o']t\s+qualify\b"),
++    re.compile(r"\bdoes\s+not\s+(meet|match)[^\n]{0,40}(criteria|requirements)"),
++    re.compile(r"\bunfortunately[^\n]{0,120}\b(qualify|selected|invited|participat)"),
++    re.compile(r"\bnot\s+(eligible|eligible\s+for|invited)\b"),
++    re.compile(r"\bno\s+longer\s+(eligible|needed|required)\b"),
++    re.compile(r"\bthank\s+you\s+for\s+your\s+interest[^\n]{0,80}(unable|cannot|unable to)"),
++    re.compile(r"\bwe\s+(are\s+)?unable\s+to\s+(include|proceed|invite)[^\n]{0,60}"),
++    re.compile(r"/terminates?\b"),
++    re.compile(r"[?&/]term(inate)?[=/&]"),
++]
++
++COMPLETE_PATTERNS = [
++    re.compile(r"survey\s+is\s+now\s+complete"),
++    re.compile(r"\b(survey|interview|session)\s+(has\s+been\s+)?(completed|finished|ended)\b"),
++    re.compile(r"thank\s+you[^\n]{0,100}\b(complet|participat|respond|finished|ended)"),
++    re.compile(r"thank\s+you\s+for\s+(taking\s+part|your\s+participation|completing)"),
++    re.compile(r"(your\s+)?(responses?|answers?|submission)\s+(has|have)\s+been\s+(recorded|saved|submitted)"),
++    re.compile(r"\byou\s+have\s+(successfully\s+)?(completed|finished)\b"),
++    re.compile(r"/(complete|completed|finished|thanks|thankyou)\b"),
++    re.compile(r"[?&](end|finished|complete)=?(1|true)?\b"),
++]
++
++VALIDATION_PATTERNS = [
++    re.compile(r"please\s+(answer|enter|select|provide|choose|fill|specify|type|input|check|pick)"),
++    re.compile(r"\bis\s+required\b"),
++    re.compile(r"\brequired\s+(field|answer|question)\b"),
++    re.compile(r"(must|needs?\s+to)\s+be\s+(entered|provided|selected|a\s+(number|valid))"),
++    re.compile(r"\binvalid\s+(value|input|number|entry|format|email|date|response)\b"),
++    re.compile(r"\bselect\s+at\s+least\s+\d+"),
++    re.compile(r"\bchoose\s+at\s+least\s+\d+"),
++    re.compile(r"\bat\s+least\s+\d+\s+(answer|option|selection|item|response|choice)"),
++    re.compile(r"\b(no\s+more\s+than|at\s+most|maximum\s+of|max\.?)\s+\d+"),
++    re.compile(r"\bnumber\s+(must\s+be\s+)?between\b"),
++    re.compile(r"\b(out\s+of\s+range|too\s+(short|long|small|large|high|low))\b"),
++    re.compile(r"\bmust\s+(be\s+)?(a\s+)?(whole\s+)?number\b"),
++    re.compile(r"\b(text\s+is\s+)?too\s+(long|short)\b"),
++    re.compile(r"\b(valid|correct)\s+(email|phone|postcode|zip|format)\b"),
++    re.compile(r"\b(rank|ranking)\s+(everything|all\s+items|each\s+item)\b"),
++    re.compile(r"\bduplicate\s+rank"),
++    re.compile(r"\b(total|sum)\s+(must|should)\s+(be|equal)\b"),
++    re.compile(r"\bmissing\s+(an?\s+)?answer"),
++    re.compile(r"\bno\s+answer\s+(selected|given|provided)\b"),
++    re.compile(r"\b(answer|select|complete)\s+(the\s+)?(following|all|each|this)\s+(question|row|item)"),
++    re.compile(r"\bplease\s+complete\b"),
++]
++
++# class/id hints for error boxes
++ERROR_ELEM_RE = re.compile(r"(error|validation|errormessage|validationmessage|alert)", re.I)
++ERROR_TEXT_RE = re.compile(
++    r"(please\s+(answer|enter|select|provide|choose|fill|specify|type|check)|is\s+required|"
++    r"invalid|at\s+least\s+\d+|too\s+(long|short)|must\s+be|out\s+of\s+range)",
++    re.I,
++)
++
++
++def _search_any(patterns: list[re.Pattern], text: str) -> Optional[re.Match]:
++    for p in patterns:
++        m = p.search(text)
++        if m:
++            return m
++    return None
++
++
++def find_validation(text: str) -> list[str]:
++    """Return validation messages found in `text` (trimmed, deduped)."""
++    out: list[str] = []
++    seen: set[str] = set()
++    for line in text.splitlines():
++        s = line.strip()
++        if not s or len(s) > 300:
++            continue
++        if _search_any(VALIDATION_PATTERNS, s):
++            key = s.lower()
++            if key not in seen:
++                seen.add(key)
++                out.append(s)
++    return out
++
++
++def classify_text(text: str, url: str = "") -> tuple[str, list[str]]:
++    """Classify visible text (plus URL) as an end status.
++
++    Returns (status, [evidence messages]) where status is one of
++    'quota_full' | 'terminate' | 'complete' | '' (not an end page).
++    """
++    low = " ".join(text.lower().split())
++    ulow = url.lower()
++
++    for pat in QUOTA_PATTERNS:
++        m = pat.search(low) or pat.search(ulow)
++        if m:
++            return "quota_full", [_evidence(low, m)]
++
++    for pat in TERMINATE_PATTERNS:
++        m = pat.search(low) or pat.search(ulow)
++        if m:
++            return "terminate", [_evidence(low, m)]
++
++    for pat in COMPLETE_PATTERNS:
++        m = pat.search(low)
++        if m:
++            return "complete", [_evidence(low, m)]
++
++    return "", []
++
++
++def _evidence(low_text: str, m: re.Match) -> str:
++    start = max(0, m.start() - 60)
++    end = min(len(low_text), m.end() + 80)
++    return low_text[start:end].strip(" .;:-")
+diff --git a/survey_flow/runner.py b/survey_flow/runner.py
+new file mode 100644
+index 0000000..89ea633
+--- /dev/null
++++ b/survey_flow/runner.py
+@@ -0,0 +1,255 @@
++"""The run loop: start a fresh session, walk pages, answer, remember ends,
++until the requested number of completes is reached."""
++
++from __future__ import annotations
++
++import json
++import logging
++import time
++from dataclasses import dataclass, field
++from typing import Optional
++
++from .analyzer import analyze
++from .decider import Decider
++from .engines import Engine, EngineError, NoSubmitError
++from .memory import TerminateMemory
++from .models import Outcome, Question
++
++log = logging.getLogger("survey_flow.runner")
++
++
++@dataclass
++class RunConfig:
++    url: str
++    completes: int = 1
++    max_attempts: int = 60        # whole runs (sessions)
++    max_pages: int = 80           # pages per run
++    max_same_page: int = 5        # repeats of one page before declaring stuck
++    delay: float = 0.3            # pause between runs
++    trace_path: Optional[str] = "traces.jsonl"
++    consecutive_error_limit: int = 3
++
++
++@dataclass
++class RunResult:
++    status: str                   # complete | terminate | quota_full | stuck | error
++    message: str = ""
++    answers: list = field(default_factory=list)
++    pages: int = 0
++
++
++class Runner:
++    def __init__(
++        self,
++        cfg: RunConfig,
++        memory: TerminateMemory,
++        decider: Decider,
++        engine: Engine,
++    ):
++        self.cfg = cfg
++        self.memory = memory
++        self.decider = decider
++        self.engine = engine
++
++    # ------------------------------------------------------------------ #
++    def run(self) -> int:
++        cfg = self.cfg
++        completes = 0
++        attempts = 0
++        errors = 0
++        t0 = time.time()
++
++        while completes < cfg.completes and attempts < cfg.max_attempts:
++            attempts += 1
++            self.memory.bump("runs")
++            try:
++                result = self._run_once(attempts)
++            except (EngineError, NoSubmitError) as e:
++                errors += 1
++                log.error("attempt %d failed: %s", attempts, e)
++                result = RunResult(status="error", message=str(e))
++                self.memory.bump("stuck")
++            except Exception as e:  # network hiccup, parse bug, ...
++                errors += 1
++                log.error("attempt %d crashed: %s", attempts, e, exc_info=True)
++                result = RunResult(status="error", message=str(e))
++                self.memory.bump("stuck")
++
++            if result.status == "complete":
++                completes += 1
++                errors = 0
++                self.memory.bump("completes")
++                log.info("attempt %d -> COMPLETE (%d/%d) %s",
++                         attempts, completes, cfg.completes, _short(result.answers))
++            elif result.status in ("terminate", "quota_full"):
++                errors = 0
++                verb = "TERMINATE" if result.status == "terminate" else "QUOTA FULL"
++                log.warning("attempt %d -> %s %s %s",
++                            attempts, verb, _short(result.answers),
++                            f"[{result.message}]" if result.message else "")
++            elif result.status == "stuck":
++                log.error("attempt %d -> STUCK %s", attempts, _short(result.answers))
++            else:
++                log.error("attempt %d -> ERROR %s", attempts, result.message)
++
++            self.memory.save()
++            if errors >= cfg.consecutive_error_limit:
++                log.error("aborting after %d consecutive errors", errors)
++                break
++            if completes < cfg.completes and attempts < cfg.max_attempts:
++                if cfg.delay:
++                    time.sleep(cfg.delay)
++
++        elapsed = time.time() - t0
++        self._summary(completes, attempts, elapsed)
++        return 0 if completes >= cfg.completes else 2
++
++    # ------------------------------------------------------------------ #
++    def _run_once(self, attempt_no: int) -> RunResult:
++        cfg = self.cfg
++        session = self.engine.new_session()
++        try:
++            html, url = session.fetch(cfg.url)
++            prev_sig: Optional[str] = None
++            same_count = 0
++            just_submitted = False
++            last_answered: list[tuple[Question, list]] = []
++            unknown_clicks = 0
++            answers: list[str] = []
++            pages = 0
++
++            for _ in range(cfg.max_pages):
++                pages += 1
++                page = analyze(html, url)
++
++                outcome = page.outcome
++                if outcome == Outcome.VALIDATION and not just_submitted:
++                    outcome = Outcome.QUESTION   # stale/first-load message: keep going
++
++                sig = page.signature
++                if sig == prev_sig:
++                    same_count += 1
++                else:
++                    same_count = 0
++                    prev_sig = sig
++
++                # ---------------- end states ---------------- #
++                if outcome in (Outcome.COMPLETE, Outcome.TERMINATE, Outcome.QUOTA_FULL):
++                    status = outcome.value
++                    message = page.messages[0] if page.messages else ""
++                    if status in ("terminate", "quota_full") and last_answered:
++                        self._remember(last_answered, status, url, message)
++                    self._trace(attempt_no, status, message, answers, pages)
++                    return RunResult(status=status, message=message,
++                                     answers=answers, pages=pages)
++
++                # ---------------- interstitial ---------------- #
++                if outcome == Outcome.INTERSTITIAL:
++                    if same_count > cfg.max_same_page:
++                        self._trace(attempt_no, "stuck", "interstitial loop", answers, pages)
++                        return RunResult(status="stuck", message="interstitial loop",
++                                         answers=answers, pages=pages)
++                    html, url = session.submit(page)
++                    just_submitted = True
++                    continue
++
++                # ---------------- unknown ---------------- #
++                if outcome == Outcome.UNKNOWN:
++                    unknown_clicks += 1
++                    if unknown_clicks > 8 or not page.submits:
++                        self._trace(attempt_no, "stuck", "unrecognized page", answers, pages)
++                        return RunResult(status="stuck", message="unrecognized page",
++                                         answers=answers, pages=pages)
++                    html, url = session.submit(page)
++                    just_submitted = True
++                    continue
++
++                # ---------------- question / validation ---------------- #
++                if same_count > cfg.max_same_page:
++                    msg = "; ".join(page.messages[:3])
++                    self._trace(attempt_no, "stuck", msg or "same page repeated",
++                                answers, pages)
++                    if just_submitted:
++                        self.memory.bump("stuck")
++                    return RunResult(status="stuck", message=msg or "same page repeated",
++                                     answers=answers, pages=pages)
++
++                if outcome == Outcome.VALIDATION and just_submitted:
++                    self.memory.bump("validations")
++                    log.info("validation on page %d: %s", pages,
++                             "; ".join(page.messages[:3]))
++
++                vmsgs = page.messages if just_submitted else page.messages
++                self.decider.decide_page(page, attempt=same_count, validation_msgs=vmsgs)
++
++                answered = []
++                for q in page.questions:
++                    entries = _chosen_entries(q)
++                    if entries:
++                        answered.append((q, entries))
++                        label = ", ".join(t for t in q.value_texts)
++                        log.debug("page %d q[%s] -> %s", pages, q.sig, label)
++                if answered:
++                    last_answered = answered
++                    for _q, entries in answered:
++                        answers.append(
++                            f"{_q.sig}=" + "/".join(e["label"] or e["value"] for e in entries)
++                        )
++
++                html, url = session.submit(page)
++                just_submitted = True
++
++            self._trace(attempt_no, "stuck", "max pages reached", answers, pages)
++            self.memory.bump("stuck")
++            return RunResult(status="stuck", message="max pages reached",
++                             answers=answers, pages=pages)
++        finally:
++            session.close()
++
++    # ------------------------------------------------------------------ #
++    def _remember(self, last_answered, status: str, url: str, message: str) -> None:
++        for q, entries in last_answered:
++            recorded = self.memory.mark_end(q.sig, q.text, entries, status, url=url, message=message)
++            if recorded:
++                log.info("memory: %s on %r -> avoid %s", status, q.text[:60],
++                         [e.get("label") or e.get("value") for e in entries])
++
++    def _trace(self, attempt: int, status: str, message: str, answers: list, pages: int) -> None:
++        if not self.cfg.trace_path:
++            return
++        rec = {
++            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
++            "attempt": attempt,
++            "status": status,
++            "message": message[:300],
++            "pages": pages,
++            "answers": answers,
++        }
++        try:
++            with open(self.cfg.trace_path, "a", encoding="utf-8") as fh:
++                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
++        except OSError:
++            pass
++
++    def _summary(self, completes: int, attempts: int, elapsed: float) -> None:
++        log.info("-" * 60)
++        log.info("finished: %d/%d completes in %d attempts (%.1fs)",
++                 completes, self.cfg.completes, attempts, elapsed)
++        for line in self.memory.summary_lines():
++            log.info("memory: %s", line)
++        if self.memory.path.exists():
++            log.info("memory file: %s", self.memory.path)
++
++
++def _chosen_entries(q: Question) -> list[dict]:
++    out = []
++    for f in q.chosen_options:
++        out.append({"label": f.label, "value": f.value, "identity": f.identity})
++    return out
++
++
++def _short(answers: list) -> str:
++    if not answers:
++        return ""
++    joined = " | ".join(answers[-6:])
++    return ("path: " + joined) if len(joined) <= 200 else ("path: " + joined[:197] + "...")
+diff --git a/tests/conftest.py b/tests/conftest.py
+new file mode 100644
+index 0000000..d05b987
+--- /dev/null
++++ b/tests/conftest.py
+@@ -0,0 +1,17 @@
++import sys
++from pathlib import Path
++
++import pytest
++
++ROOT = Path(__file__).resolve().parents[1]
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++from tests.mock_survey import start_mock_server  # noqa: E402  # pylint: disable=wrong-import-position
++
++
++@pytest.fixture(scope="session")
++def mock_url():
++    server, url = start_mock_server()
++    yield url
++    server.shutdown()
+diff --git a/tests/mock_survey.py b/tests/mock_survey.py
+new file mode 100644
+index 0000000..2d19ad6
+--- /dev/null
++++ b/tests/mock_survey.py
+@@ -0,0 +1,263 @@
++"""A miniature Confirmit/Forsta-like survey used by the end-to-end test.
++
++Flow:
++  0 consent page (interstitial, required checkbox)
++  1 SA screener: "No" terminates                 -> teaches memory
++  2 SA with red bold instruction: Select "Yes"   -> instruction protection
++  3 MA requiring >= 4 selections (validation)    -> validation learning
++  4 dropdown: "Decline to answer" -> quota full  -> quota memory
++  5 SA grid, 3 required rows + red instruction
++  6 open text, min 5 chars
++  -> complete
++
++Options are ordered so that a round-robin strategy hits the terminate and
++the quota-full ends first, then learns to avoid them.
++"""
++
++from __future__ import annotations
++
++import threading
++import uuid
++from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
++from urllib.parse import parse_qs
++
++PAGE_CONSENT = """<!doctype html><html><body>
++<h2>Welcome to the survey</h2>
++<form method="post" action="/survey">
++  <p>Before you begin, please confirm your consent.</p>
++  <label><input type="checkbox" name="consent" value="on"> I agree to participate</label>
++  <input type="submit" name="Next" value="Start">
++</form></body></html>"""
++
++PAGE_Q1 = """<!doctype html><html><body>
++<form method="post" action="/survey">
++<div id="QuestionDIV1">
++  <p class="QuestionText">Are you currently employed?</p>
++  <label><input type="radio" name="q1" value="1"> No</label>
++  <label><input type="radio" name="q1" value="2"> Yes</label>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++PAGE_Q2 = """<!doctype html><html><body>
++<form method="post" action="/survey">
++<div id="QuestionDIV2">
++  <p class="QuestionText">Do you have a valid driving license?</p>
++  <span style="color:#ff0000"><b>Select: "Yes"</b></span>
++  <label><input type="radio" name="q2" value="1"> No</label>
++  <label><input type="radio" name="q2" value="2"> Yes</label>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++PAGE_Q3 = """<!doctype html><html><body>
++<form method="post" action="/survey">
++<div id="QuestionDIV3">
++  <p class="QuestionText">Which of the following services do you use? (select all that apply)</p>
++  <label><input type="checkbox" name="q3_1" value="1"> Email</label>
++  <label><input type="checkbox" name="q3_2" value="2"> Search</label>
++  <label><input type="checkbox" name="q3_3" value="3"> Video</label>
++  <label><input type="checkbox" name="q3_4" value="4"> Shopping</label>
++  <label><input type="checkbox" name="q3_5" value="5"> None of these</label>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++PAGE_Q4 = """<!doctype html><html><body>
++<form method="post" action="/survey">
++<div id="QuestionDIV4">
++  <p class="QuestionText">Which plan best describes you?</p>
++  <select name="q4">
++    <option value="">-- Select --</option>
++    <option value="1">Decline to answer</option>
++    <option value="2">Full access</option>
++    <option value="3">Beta tester</option>
++  </select>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++PAGE_Q5 = """<!doctype html><html><body>
++<form method="post" action="/survey">
++<div id="QuestionDIV5">
++  <p class="QuestionText">Rate the following statements</p>
++  <span style="color:red"><b>Answer all three rows</b></span>
++  <table>
++    <tr><td>Delivery speed</td>
++        <td><label><input type="radio" name="q5_1" value="1"> Poor</label></td>
++        <td><label><input type="radio" name="q5_1" value="2"> Average</label></td>
++        <td><label><input type="radio" name="q5_1" value="3"> Good</label></td></tr>
++    <tr><td>Value for money</td>
++        <td><label><input type="radio" name="q5_2" value="1"> Poor</label></td>
++        <td><label><input type="radio" name="q5_2" value="2"> Average</label></td>
++        <td><label><input type="radio" name="q5_2" value="3"> Good</label></td></tr>
++    <tr><td>Customer support</td>
++        <td><label><input type="radio" name="q5_3" value="1"> Poor</label></td>
++        <td><label><input type="radio" name="q5_3" value="2"> Average</label></td>
++        <td><label><input type="radio" name="q5_3" value="3"> Good</label></td></tr>
++  </table>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++PAGE_Q6 = """<!doctype html><html><body>
++<form method="post" action="/survey">
++<div id="QuestionDIV6">
++  <p class="QuestionText">What is the main reason you use our service?</p>
++  <input type="text" name="q6" maxlength="100">
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++PAGE_COMPLETE = """<!doctype html><html><body>
++<h1>Thank you</h1>
++<p>Your survey is now complete.</p>
++</body></html>"""
++
++PAGE_TERMINATE = """<!doctype html><html><body>
++<h1>Survey terminated</h1>
++<p>You do not qualify for this survey.</p>
++</body></html>"""
++
++PAGE_QUOTA = """<!doctype html><html><body>
++<h1>Quota full</h1>
++<p>Sorry, this quota has been reached.</p>
++</body></html>"""
++
++
++def _error_page(html: str, message: str) -> str:
++    return html.replace('<form method="post"', f'<div class="error">{message}</div>\n<form method="post"', 1)
++
++
++class _State:
++    def __init__(self):
++        self.page = 0
++
++
++class MockSurveyHandler(BaseHTTPRequestHandler):
++    states: dict[str, _State] = {}
++    lock = threading.Lock()
++
++    def log_message(self, *args):  # silence
++        pass
++
++    # ------------------------------------------------------------------ #
++    def _cookie_sid(self) -> str | None:
++        raw = self.headers.get("Cookie", "")
++        for part in raw.split(";"):
++            k, _, v = part.strip().partition("=")
++            if k == "sid" and v:
++                return v
++        return None
++
++    def _new_sid(self) -> str:
++        sid = uuid.uuid4().hex
++        with self.lock:
++            self.states[sid] = _State()
++        return sid
++
++    def _state(self) -> tuple[str, _State]:
++        sid = self._cookie_sid()
++        if sid is None or sid not in self.states:
++            sid = self._new_sid()
++        return sid, self.states[sid]
++
++    def _send(self, body: str, sid: str, new: bool) -> None:
++        data = body.encode("utf-8")
++        self.send_response(200)
++        self.send_header("Content-Type", "text/html; charset=utf-8")
++        self.send_header("Content-Length", str(len(data)))
++        if new:
++            self.send_header("Set-Cookie", f"sid={sid}; Path=/")
++        self.end_headers()
++        self.wfile.write(data)
++
++    # ------------------------------------------------------------------ #
++    def do_GET(self):  # pylint: disable=invalid-name
++        if self.path.split("?")[0] in ("/", "/survey"):
++            sid = self._cookie_sid()
++            new = sid is None or sid not in self.states
++            if new:
++                sid = self._new_sid()
++            self._send(self._render(self.states[sid].page), sid, new)
++        else:
++            self.send_error(404)
++
++    def do_POST(self):  # pylint: disable=invalid-name
++        if self.path.split("?")[0] != "/survey":
++            self.send_error(404)
++            return
++        length = int(self.headers.get("Content-Length") or 0)
++        body = self.rfile.read(length).decode("utf-8", "replace")
++        data = parse_qs(body, keep_blank_values=True)
++        sid, st = self._state()
++
++        def val(key: str) -> str:
++            return (data.get(key) or [""])[0]
++
++        err = None
++        page = st.page
++        if page == 0:
++            if val("consent") != "on":
++                err = "Please agree to continue"
++            else:
++                st.page = 1
++        elif page == 1:
++            # q1 value 1 = "No" -> terminate
++            st.page = 2 if val("q1") == "2" else 90
++        elif page == 2:
++            # q2 must be Yes (value 2); red instruction protects the run
++            st.page = 3 if val("q2") == "2" else 90
++        elif page == 3:
++            chosen = [k for k, v in data.items()
++                      if k.startswith("q3_") and v and v[0]]
++            if len(chosen) < 4:
++                err = "Please select at least 4 options"
++            else:
++                st.page = 4
++        elif page == 4:
++            q4 = val("q4")
++            if q4 == "":
++                err = "Please select an option"
++            elif q4 == "1":
++                st.page = 91                      # Decline to answer -> quota full
++            else:
++                st.page = 5
++        elif page == 5:
++            if all(val(f"q5_{i}") for i in (1, 2, 3)):
++                st.page = 6
++            else:
++                err = "Please answer each row"
++        elif page == 6:
++            if len(val("q6").strip()) >= 5:
++                st.page = 99
++            else:
++                err = "Please enter at least 5 characters"
++        elif page == 99:
++            err = None
++            st.page = 99
++
++        # `err` renders the SAME page again with an error box
++        if err:
++            html = self._render(st.page).replace(
++                '<form method="post"', f'<div class="error">{err}</div>\n<form method="post"', 1
++            )
++        else:
++            html = self._render(st.page)
++        self._send(html, sid, False)
++
++    def _render(self, page: int) -> str:
++        return {
++            0: PAGE_CONSENT,
++            1: PAGE_Q1,
++            2: PAGE_Q2,
++            3: PAGE_Q3,
++            4: PAGE_Q4,
++            5: PAGE_Q5,
++            6: PAGE_Q6,
++            90: PAGE_TERMINATE,
++            91: PAGE_QUOTA,
++            99: PAGE_COMPLETE,
++        }[page]
++
++
++def start_mock_server() -> tuple[ThreadingHTTPServer, str]:
++    server = ThreadingHTTPServer(("127.0.0.1", 0), MockSurveyHandler)
++    thread = threading.Thread(target=server.serve_forever, daemon=True)
++    thread.start()
++    host, port = server.server_address[:2]
++    return server, f"http://{host}:{port}/survey"
+diff --git a/tests/test_analyzer.py b/tests/test_analyzer.py
+new file mode 100644
+index 0000000..c9887d8
+--- /dev/null
++++ b/tests/test_analyzer.py
+@@ -0,0 +1,193 @@
++from survey_flow.analyzer import analyze
++from survey_flow.models import Outcome
++
++
++SA_PAGE = """<html><body><form method=post action=/s>
++<div id="QuestionDIV9">
++  <p class="QuestionText">Are you currently employed?</p>
++  <span style="color:#f00"><b>Select: "Yes"</b></span>
++  <label><input type="radio" name="q1" value="1"> No</label>
++  <label><input type="radio" name="q1" value="2"> Yes</label>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++MA_PAGE = """<html><body><form method=post>
++<div id="Q2">
++  <p class="QuestionText">Pick at least 3 services</p>
++  <label><input type="checkbox" name="q2_1" value="1"> Email</label>
++  <label><input type="checkbox" name="q2_2" value="2"> Search</label>
++  <label><input type="checkbox" name="q2_3" value="3"> Video</label>
++  <label><input type="checkbox" name="q2_4" value="4"> Chat</label>
++  <label><input type="checkbox" name="q2_5" value="5"> None of these</label>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++GRID_PAGE = """<html><body><form method=post>
++<div id="QG">
++  <p class="QuestionText">Rate these</p>
++  <table>
++    <tr><td>Speed</td>
++        <td><label><input type="radio" name="g_1" value="1"> Poor</label></td>
++        <td><label><input type="radio" name="g_1" value="2"> Good</label></td></tr>
++    <tr><td>Value</td>
++        <td><label><input type="radio" name="g_2" value="1"> Poor</label></td>
++        <td><label><input type="radio" name="g_2" value="2"> Good</label></td></tr>
++  </table>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++RANK_PAGE = """<html><body><form method=post>
++<div id="QR">
++  <p class="QuestionText">Rank the fruits, best first</p>
++  <table>
++    <tr><td>Apple</td>
++        <td><label><input type="radio" name="r_1" value="1"> 1</label></td>
++        <td><label><input type="radio" name="r_1" value="2"> 2</label></td></tr>
++    <tr><td>Banana</td>
++        <td><label><input type="radio" name="r_2" value="1"> 1</label></td>
++        <td><label><input type="radio" name="r_2" value="2"> 2</label></td></tr>
++  </table>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++DROPDOWN_PAGE = """<html><body><form method=post>
++<div id="QD">
++  <p class="QuestionText">Choose your region</p>
++  <select name="qd">
++    <option value="">-- Select --</option>
++    <option value="1">North</option>
++    <option value="2">South</option>
++  </select>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++NUMBER_PAGE = """<html><body><form method=post>
++<div id="QN">
++  <p class="QuestionText">What is your age? Enter a number between 18 and 99</p>
++  <input type="number" name="age" min="18" max="99">
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++TEXT_PAGE = """<html><body><form method=post>
++<div id="QT">
++  <p class="QuestionText">Why do you use our service?</p>
++  <input type="text" name="why" maxlength="80">
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++TERMINATE_IN_WORD_PAGE = """<html><body><form method=post>
++<div id="QX">
++  <p class="QuestionText">Have you ever been terminated from a job?</p>
++  <label><input type="radio" name="qx" value="1"> No</label>
++  <label><input type="radio" name="qx" value="2"> Yes</label>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++COMPLETE_PAGE = "<html><body><h1>Thank you</h1><p>Your survey is now complete.</p></body></html>"
++TERMINATE_PAGE = "<html><body><h1>Survey terminated</h1><p>You do not qualify.</p></body></html>"
++QUOTA_PAGE = "<html><body><h1>Quota full</h1><p>The quota has been reached.</p></body></html>"
++VALIDATION_PAGE = SA_PAGE.replace(
++    '<form method=post', '<div class="error">Please answer this question</div><form method=post'
++)
++
++
++def test_single_choice_with_red_instruction():
++    page = analyze(SA_PAGE, "http://x/test")
++    assert page.outcome == Outcome.QUESTION
++    assert len(page.questions) == 1
++    q = page.questions[0]
++    assert q.kind == "single"
++    assert q.sig == "QuestionDIV9"
++    assert any('Select: "Yes"' in i for i in q.instructions), q.instructions
++    labels = [f.label for f in q.fields if f.type == "radio"]
++    assert labels == ["No", "Yes"]
++
++
++def test_multi_min_and_exclusive():
++    page = analyze(MA_PAGE, "http://x/test")
++    q = page.questions[0]
++    assert q.kind == "multi"
++    assert q.min_select == 3
++    excl = [f for f in q.fields if f.exclusive]
++    assert [f.label for f in excl] == ["None of these"]
++
++
++def test_grid():
++    page = analyze(GRID_PAGE, "http://x/test")
++    q = page.questions[0]
++    assert q.kind == "grid_single"
++    rows = {f.name for f in q.fields if f.type == "radio"}
++    assert rows == {"g_1", "g_2"}
++    # row labels attached
++    first = next(f for f in q.fields if f.name == "g_1")
++    assert first.row_label == "Speed"
++
++
++def test_ranking_detected():
++    page = analyze(RANK_PAGE, "http://x/test")
++    q = page.questions[0]
++    assert q.kind == "ranking"
++
++
++def test_dropdown_options_attached():
++    page = analyze(DROPDOWN_PAGE, "http://x/test")
++    q = page.questions[0]
++    assert q.kind == "dropdown"
++    sel = q.fields[0]
++    labels = [o.label for o in sel.options]
++    assert labels == ["-- Select --", "North", "South"]
++    assert sel.options[0].is_placeholder_option
++    assert not sel.options[1].is_placeholder_option
++
++
++def test_number_bounds():
++    page = analyze(NUMBER_PAGE, "http://x/test")
++    q = page.questions[0]
++    assert q.kind == "number"
++    f = q.scalars[0]
++    assert f.min == "18" and f.max == "99"
++
++
++def test_text_limits():
++    page = analyze(TEXT_PAGE, "http://x/test")
++    q = page.questions[0]
++    assert q.kind == "text"
++    assert q.scalars[0].maxlength == 80
++
++
++def test_terminate_word_in_question_is_not_end_status():
++    page = analyze(TERMINATE_IN_WORD_PAGE, "http://x/survey")
++    assert page.outcome == Outcome.QUESTION
++
++
++def test_end_pages():
++    assert analyze(COMPLETE_PAGE, "http://x/").outcome == Outcome.COMPLETE
++    assert analyze(TERMINATE_PAGE, "http://x/").outcome == Outcome.TERMINATE
++    assert analyze(QUOTA_PAGE, "http://x/").outcome == Outcome.QUOTA_FULL
++
++
++def test_validation_page():
++    page = analyze(VALIDATION_PAGE, "http://x/test")
++    assert page.outcome == Outcome.VALIDATION
++    assert page.messages
++
++
++def test_interstitial():
++    html = """<html><body><form method=post>
++      <p>Welcome</p><input type="submit" value="Start">
++      </form></body></html>"""
++    page = analyze(html, "http://x/test")
++    assert page.outcome == Outcome.INTERSTITIAL
++
++
++def test_submit_detected():
++    page = analyze(SA_PAGE, "http://x/test")
++    assert page.submits
++    assert page.submits[0].label == "Next"
++    assert page.form_method == "POST"
++
++
++def test_hidden_fields_captured():
++    html = SA_PAGE.replace("</form>", '<input type="hidden" name="sid" value="abc"></form>')
++    page = analyze(html, "http://x/test")
++    assert ("sid", "abc") in page.hiddens
+diff --git a/tests/test_decider.py b/tests/test_decider.py
+new file mode 100644
+index 0000000..fe19059
+--- /dev/null
++++ b/tests/test_decider.py
+@@ -0,0 +1,225 @@
++import json
++
++from survey_flow.analyzer import analyze
++from survey_flow.decider import Decider, Persona, constraints_from_validations
++from survey_flow.memory import TerminateMemory
++
++SA_HTML = """<html><body><form method=post>
++<div id="QuestionDIV1">
++  <p class="QuestionText">Are you employed?</p>
++  <label><input type="radio" name="q1" value="1"> No</label>
++  <label><input type="radio" name="q1" value="2"> Yes</label>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++INSTR_HTML = """<html><body><form method=post>
++<div id="QuestionDIV2">
++  <p class="QuestionText">Driving license?</p>
++  <span style="color:#f00"><b>Select: "Yes"</b></span>
++  <label><input type="radio" name="q2" value="1"> No</label>
++  <label><input type="radio" name="q2" value="2"> Yes</label>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++MA_HTML = """<html><body><form method=post>
++<div id="Q3">
++  <p class="QuestionText">Choose some services</p>
++  <label><input type="checkbox" name="q3_1" value="1"> A</label>
++  <label><input type="checkbox" name="q3_2" value="2"> B</label>
++  <label><input type="checkbox" name="q3_3" value="3"> C</label>
++  <label><input type="checkbox" name="q3_4" value="4"> D</label>
++  <label><input type="checkbox" name="q3_5" value="5"> None of these</label>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++NUM_HTML = """<html><body><form method=post>
++<div id="Q4">
++  <p class="QuestionText">What is your age? Enter a number between 18 and 25</p>
++  <input type="number" name="age">
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++CSUM_HTML = """<html><body><form method=post>
++<div id="Q5">
++  <p class="QuestionText">Allocate 100 points among these</p>
++  Price: <input type="number" name="p1"><br>
++  Quality: <input type="number" name="p2"><br>
++  Service: <input type="number" name="p3">
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++RANK_HTML = """<html><body><form method=post>
++<div id="Q6">
++  <p class="QuestionText">Rank the fruits</p>
++  <table>
++    <tr><td>Apple</td>
++        <td><label><input type="radio" name="r_1" value="1"> 1</label></td>
++        <td><label><input type="radio" name="r_1" value="2"> 2</label></td>
++        <td><label><input type="radio" name="r_1" value="3"> 3</label></td></tr>
++    <tr><td>Banana</td>
++        <td><label><input type="radio" name="r_2" value="1"> 1</label></td>
++        <td><label><input type="radio" name="r_2" value="2"> 2</label></td>
++        <td><label><input type="radio" name="r_2" value="3"> 3</label></td></tr>
++    <tr><td>Cherry</td>
++        <td><label><input type="radio" name="r_3" value="1"> 1</label></td>
++        <td><label><input type="radio" name="r_3" value="2"> 2</label></td>
++        <td><label><input type="radio" name="r_3" value="3"> 3</label></td></tr>
++  </table>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++DROP_HTML = """<html><body><form method=post>
++<div id="Q7">
++  <p class="QuestionText">Choose your region</p>
++  <select name="region">
++    <option value="">-- Select --</option>
++    <option value="1">North</option>
++    <option value="2">South</option>
++    <option value="3">East</option>
++  </select>
++  <input type="submit" name="Next" value="Next">
++</div></form></body></html>"""
++
++
++def decide(html, decider, attempt=0, vmsgs=None):
++    page = analyze(html, "http://x/test")
++    decider.decide_page(page, attempt=attempt, validation_msgs=vmsgs or [])
++    return page
++
++
++def chosen(page):
++    out = {}
++    for q in page.questions:
++        out[q.sig] = [f.label for f in q.chosen_options if f.selected or f.new_value]
++        if q.kind == "dropdown":
++            out[q.sig] = [o.label for sel in q.fields if sel.type == "select-one"
++                          for o in sel.options if sel.new_value == o.value and o.value]
++        out[q.sig] += [f"{f.name}={f.new_value}" for f in q.scalars if f.new_value is not None]
++    return out
++
++
++def test_strategy_first():
++    page = decide(SA_HTML, Decider(TerminateMemory(":memory:"), strategy="first"))
++    assert chosen(page)["QuestionDIV1"] == ["No"]
++
++
++def test_memory_avoids_terminate():
++    mem = TerminateMemory(":memory:")
++    mem.mark_end("QuestionDIV1", "Are you employed?",
++                 [{"label": "No", "value": "1"}], "terminate")
++    for _ in range(10):
++        page = decide(SA_HTML, Decider(mem, strategy="round-robin"))
++        assert chosen(page)["QuestionDIV1"] == ["Yes"]
++
++
++def test_instruction_beats_memory_and_strategy():
++    mem = TerminateMemory(":memory:")
++    mem.mark_end("QuestionDIV2", "license", [{"label": "Yes", "value": "2"}], "terminate")
++    page = decide(INSTR_HTML, Decider(mem, strategy="first"))
++    assert chosen(page)["QuestionDIV2"] == ["Yes"]
++
++
++def test_multi_validation_raises_min():
++    page = decide(MA_HTML, Decider(TerminateMemory(":memory:"), strategy="first"))
++    assert chosen(page)["Q3"] == ["A"]          # default min = 1
++    page = decide(MA_HTML, Decider(TerminateMemory(":memory:"), strategy="first"),
++                  attempt=1, vmsgs=["Please select at least 4 options"])
++    assert len(chosen(page)["Q3"]) == 4
++    assert "None of these" not in chosen(page)["Q3"]   # exclusive kept out
++
++
++def test_multi_never_mixes_exclusive():
++    mem = TerminateMemory(":memory:")
++    for _ in range(20):
++        page = decide(MA_HTML, Decider(mem, strategy="round-robin"),
++                      attempt=1, vmsgs=["Please select at least 4 options"])
++        got = chosen(page)["Q3"]
++        if "None of these" in got:
++            assert len(got) == 1
++
++
++def test_number_from_instruction_range():
++    page = decide(NUM_HTML, Decider(TerminateMemory(":memory:"), strategy="random", seed=1))
++    age = int(chosen(page)["Q4"][0].split("=")[1])
++    assert 18 <= age <= 25
++
++
++def test_number_from_validation_range():
++    page = decide(NUM_HTML, Decider(TerminateMemory(":memory:"), strategy="random", seed=3),
++                  attempt=1, vmsgs=["Number must be between 18 and 25"])
++    age = int(chosen(page)["Q4"][0].split("=")[1])
++    assert 18 <= age <= 25
++
++
++def test_constant_sum_totals_100():
++    page = decide(CSUM_HTML, Decider(TerminateMemory(":memory:"), strategy="first"))
++    got = chosen(page)["Q5"]
++    total = sum(int(v.split("=")[1]) for v in got)
++    assert total == 100
++
++
++def test_ranking_assigns_unique_ranks():
++    page = decide(RANK_HTML, Decider(TerminateMemory(":memory:"), strategy="first"))
++    ranks = []
++    for q in page.questions:
++        for f in q.chosen_options:
++            ranks.append((f.name, f.value))
++    # one selection per row, values unique
++    values = sorted(v for _, v in ranks)
++    assert values == ["1", "2", "3"]
++
++
++def test_dropdown_skips_placeholder_and_learns():
++    mem = TerminateMemory(":memory:")
++    page = decide(DROP_HTML, Decider(mem, strategy="first"))
++    assert chosen(page)["Q7"] == ["North"]
++    mem.mark_end("Q7", "region", [{"label": "North", "value": "1"}], "terminate")
++    page = decide(DROP_HTML, Decider(mem, strategy="first"))
++    assert chosen(page)["Q7"] == ["South"]
++
++
++def test_persona_values():
++    persona = Persona({"keywords": {"age": 34, "gender": "Male"}, "text": "because QA"})
++    dec = Decider(TerminateMemory(":memory:"), persona=persona, strategy="first")
++    page = decide(NUM_HTML, dec)
++    assert chosen(page)["Q4"] == ["age=34"]
++
++    gender_html = SA_HTML.replace("Are you employed?", "What is your gender?") \
++        .replace("> No<", "> Female<").replace("> Yes<", "> Male<") \
++        .replace('value="1"', 'value="1"').replace("value=1", "value=1")
++    page = decide(gender_html, dec)
++    assert chosen(page)["QuestionDIV1"] == ["Male"]
++
++
++def test_constraints_from_validations():
++    c = constraints_from_validations([
++        "Please select at least 4 options",
++        "Number must be between 18 and 25",
++        "Minimum length of 30 required",
++    ])
++    assert c["min_select"] == 4
++    assert c["range"] == (18.0, 25.0)
++    assert c["min_length"] == 30
++
++
++def test_memory_stats_persist_to_json(tmp_path):
++    path = tmp_path / "m.json"
++    mem = TerminateMemory(str(path))
++    mem.mark_end("q", "t", [{"label": "No", "value": "1"}], "terminate")
++    mem.save()
++    data = json.loads(path.read_text())
++    assert data["questions"]["q"]["ends"]["l:no"]["last_status"] == "terminate"
++
++
++def test_learned_min_persists_across_deciders(tmp_path):
++    """A validation message teaches the memory; a fresh decider starts at k=4."""
++    mem = TerminateMemory(str(tmp_path / "m.json"))
++    page = analyze(MA_HTML, "http://x/test")
++    Decider(mem, strategy="first").decide_page(
++        page, attempt=1, validation_msgs=["Please select at least 4 options"]
++    )
++    assert mem.learned("Q3", "min_select") == 4
++
++    page2 = analyze(MA_HTML, "http://x/test")
++    Decider(mem, strategy="first").decide_page(page2, attempt=0, validation_msgs=[])
++    assert len(chosen(page2)["Q3"]) == 4
+diff --git a/tests/test_e2e_runner.py b/tests/test_e2e_runner.py
+new file mode 100644
+index 0000000..ace8baa
+--- /dev/null
++++ b/tests/test_e2e_runner.py
+@@ -0,0 +1,101 @@
++"""End-to-end: full runner against the mock Confirmit-style survey.
++
++Round-robin strategy makes the sequence deterministic:
++  run 1: hits "No" on the screener      -> TERMINATE  (memory learns)
++  run 2: avoids "No", instruction saves Q2, MA validation is corrected,
++         hits "Decline to answer"       -> QUOTA FULL (memory learns)
++  run 3+: avoids both                   -> COMPLETE
++"""
++
++import json
++
++from survey_flow.decider import Decider
++from survey_flow.engines import create_engine
++from survey_flow.memory import TerminateMemory
++from survey_flow.runner import Runner, RunConfig
++
++
++def test_reaches_completes_and_learns(mock_url, tmp_path):
++    mem_path = tmp_path / "memory.json"
++    trace_path = tmp_path / "traces.jsonl"
++
++    memory = TerminateMemory(str(mem_path))
++    decider = Decider(memory, strategy="round-robin", seed=7)
++    engine = create_engine("http")
++    cfg = RunConfig(
++        url=mock_url,
++        completes=3,
++        max_attempts=20,
++        delay=0.0,
++        trace_path=str(trace_path),
++    )
++    try:
++        code = Runner(cfg, memory, decider, engine).run()
++    finally:
++        engine.close()
++
++    assert code == 0, "target completes not reached"
++    stats = memory.stats
++    assert stats["completes"] == 3
++    assert stats["terminates"] >= 1, "expected to hit the screener terminate once"
++    assert stats["quota_full"] >= 1, "expected to hit the quota-full end once"
++
++    # --- learned to avoid the terminating / over-quota selections ------- #
++    assert memory.is_fatal("QuestionDIV1", "l:no", label="No"), "screener 'No' not remembered"
++    assert memory.is_fatal("QuestionDIV4", "l:decline to answer",
++                           label="Decline to answer"), "quota selection not remembered"
++
++    # --- red instruction was followed: Q2 never terminated -------------- #
++    q2 = memory.data["questions"].get("QuestionDIV2")
++    assert not (q2 and q2.get("ends")), "Q2 should never end a run (instruction followed)"
++
++    # --- memory file persisted on disk ---------------------------------- #
++    on_disk = json.loads(mem_path.read_text())
++    assert "QuestionDIV1" in on_disk["questions"]
++
++    # --- traces written -------------------------------------------------- #
++    traces = [json.loads(line) for line in trace_path.read_text().splitlines() if line.strip()]
++    statuses = [t["status"] for t in traces]
++    assert "complete" in statuses
++    assert statuses.count("complete") == 3
++
++
++def test_second_process_avoids_learned_terminates(mock_url, tmp_path):
++    """Memory persists: a fresh process (fresh memory counters) avoids known ends."""
++    mem_path = tmp_path / "memory.json"
++
++    # process 1: learn
++    memory = TerminateMemory(str(mem_path))
++    decider = Decider(memory, strategy="round-robin", seed=1)
++    engine = create_engine("http")
++    cfg = RunConfig(url=mock_url, completes=1, max_attempts=10, delay=0.0, trace_path=None)
++    try:
++        assert Runner(cfg, memory, decider, engine).run() == 0
++    finally:
++        engine.close()
++
++    # process 2: fresh runner instance, same memory file
++    memory2 = TerminateMemory(str(mem_path))
++    decider2 = Decider(memory2, strategy="round-robin", seed=2)
++    engine2 = create_engine("http")
++    try:
++        code = Runner(cfg, memory2, decider2, engine2).run()
++    finally:
++        engine2.close()
++
++    assert code == 0
++    # the fresh process should avoid 'No' from the very first run
++    assert memory2.is_fatal("QuestionDIV1", "l:no", label="No")
++
++
++def test_random_strategy_with_seed_reaches_complete(mock_url, tmp_path):
++    memory = TerminateMemory(str(tmp_path / "m.json"))
++    decider = Decider(memory, strategy="random", seed=42)
++    engine = create_engine("http")
++    cfg = RunConfig(url=mock_url, completes=2, max_attempts=40, delay=0.0, trace_path=None)
++    try:
++        code = Runner(cfg, memory, decider, engine).run()
++    finally:
++        engine.close()
++    assert code == 0
++    assert memory.stats["completes"] == 2
+diff --git a/tests/test_instructions.py b/tests/test_instructions.py
+new file mode 100644
+index 0000000..cadc0ad
+--- /dev/null
++++ b/tests/test_instructions.py
+@@ -0,0 +1,70 @@
++from survey_flow.instructions import (
++    match_targets_to_options,
++    norm_label,
++    parse_instruction,
++)
++
++
++class FakeOpt:
++    def __init__(self, label, value=""):
++        self.label = label
++        self.value = value
++        self.type = "radio"
++        self.selected = False
++        self.new_value = None
++
++
++def test_norm_label():
++    assert norm_label("  None of these! ") == "none of these"
++    assert norm_label("Don't know") == norm_label("dont know")
++
++
++def test_parse_select_quoted():
++    h = parse_instruction('Select: "Yes"')
++    assert h.kind == "options"
++    assert "Yes" in h.targets
++
++
++def test_parse_choose_option_b():
++    h = parse_instruction("Choose option B")
++    assert any("B" == t or t.endswith(" B") or t == "B" for t in h.targets) or "B" in h.targets
++
++
++def test_parse_enter_number():
++    h = parse_instruction("Enter: 25")
++    assert 25.0 in h.numbers or (h.targets and h.targets[0] == "25")
++
++
++def test_guidance_is_not_a_target():
++    h = parse_instruction("Avoid selecting No here")
++    assert h.kind == "none"
++
++
++def test_parse_select_multiple_targets():
++    h = parse_instruction("Select Apple and Banana")
++    assert "Apple" in h.targets
++    assert "Banana" in h.targets
++
++
++def test_match_exact_and_case_insensitive():
++    opts = [FakeOpt("Yes"), FakeOpt("No")]
++    hits = match_targets_to_options(["yes"], [], opts, "single")
++    assert [h.label for h in hits] == ["Yes"]
++
++
++def test_match_by_number_position_nps():
++    opts = [FakeOpt(str(i)) for i in range(11)]
++    hits = match_targets_to_options([], [7.0], opts, "nps")
++    assert [h.label for h in hits] == ["7"]
++
++
++def test_match_fuzzy():
++    opts = [FakeOpt("Full time employement")]  # sic
++    hits = match_targets_to_options(["Full time employment"], [], opts, "single")
++    assert len(hits) == 1
++
++
++def test_match_multiple_targets():
++    opts = [FakeOpt("Apple"), FakeOpt("Banana"), FakeOpt("Cherry")]
++    hits = match_targets_to_options(["apple", "cherry"], [], opts, "multi")
++    assert sorted(h.label for h in hits) == ["Apple", "Cherry"]
+diff --git a/tests/test_memory.py b/tests/test_memory.py
+new file mode 100644
+index 0000000..2e3c8eb
+--- /dev/null
++++ b/tests/test_memory.py
+@@ -0,0 +1,48 @@
++from survey_flow.memory import TerminateMemory
++
++
++def test_mark_and_avoid(tmp_path):
++    path = tmp_path / "mem.json"
++    m = TerminateMemory(str(path))
++    m.note_seen("q1", "Are you employed?")
++    m.mark_end(
++        "q1", "Are you employed?",
++        [{"label": "No", "value": "1", "identity": "l:no"}],
++        "terminate", url="http://x/test", message="you do not qualify",
++    )
++    assert m.is_fatal("q1", "l:no", label="No", value="1")
++    assert not m.is_fatal("q1", "l:yes", label="Yes", value="2")
++    assert m.stats["terminates"] == 1
++
++
++def test_persistence_roundtrip(tmp_path):
++    path = tmp_path / "mem.json"
++    m = TerminateMemory(str(path))
++    m.mark_end("q1", "text", [{"label": "No", "value": "1"}], "terminate")
++    m.bump("completes", 2)
++    m.save()
++
++    m2 = TerminateMemory(str(path))
++    assert m2.is_fatal("q1", "l:no", label="No")
++    assert m2.stats["completes"] == 2
++    assert m2.data["questions"]["q1"]["text"] == "text"
++
++
++def test_quota_respects_avoid_setting(tmp_path):
++    path = tmp_path / "mem.json"
++    only_term = TerminateMemory(str(path), avoid=("terminate",))
++    only_term.mark_end("q4", "plan", [{"label": "Decline"}], "quota_full")
++    assert not only_term.is_fatal("q4", "l:decline to answer", label="Decline")
++
++    both = TerminateMemory(str(path), avoid=("terminate", "quota_full"))
++    both.mark_end("q4", "plan", [{"label": "Decline"}], "quota_full")
++    assert both.is_fatal("q4", "l:decline to answer", label="Decline")
++
++
++def test_clear(tmp_path):
++    path = tmp_path / "mem.json"
++    m = TerminateMemory(str(path))
++    m.mark_end("q1", "t", [{"label": "No"}], "terminate")
++    m.clear()
++    assert not m.data["questions"]
++    assert not m.is_fatal("q1", "l:no", label="No")
+diff --git a/tests/test_outcomes.py b/tests/test_outcomes.py
+new file mode 100644
+index 0000000..7da716e
+--- /dev/null
++++ b/tests/test_outcomes.py
+@@ -0,0 +1,44 @@
++from survey_flow.outcomes import classify_text, find_validation
++
++
++def test_complete_detected():
++    status, ev = classify_text("Thank you. Your survey is now complete.")
++    assert status == "complete"
++    assert ev
++
++
++def test_terminate_detected():
++    status, _ = classify_text("Survey terminated. You do not qualify.")
++    assert status == "terminate"
++
++
++def test_terminate_url_signal():
++    status, _ = classify_text("", "https://survey.example.com/terminate/sv/abc")
++    assert status == "terminate"
++
++
++def test_quota_detected():
++    status, _ = classify_text("Sorry, this quota has been reached.")
++    assert status == "quota_full"
++
++
++def test_quota_wins_over_thanks():
++    # quota pages often still say thank you
++    status, _ = classify_text("Thank you. Unfortunately the quota is full.")
++    assert status == "quota_full"
++
++
++def test_not_an_end_page():
++    status, _ = classify_text("Which of these brands have you heard of?")
++    assert status == ""
++
++
++def test_find_validation():
++    msgs = find_validation("Please select at least 4 options")
++    assert msgs
++
++
++def test_question_text_not_validation():
++    # a question mentioning termination must not classify as an end status
++    status, _ = classify_text("Have you ever been terminated from a job?")
++    assert status == ""
