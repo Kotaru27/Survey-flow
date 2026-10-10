@@ -1,0 +1,4 @@
+# Optional: browser engine for JS-driven surveys.
+# After installing, run:  playwright install chromium
+-r requirements.txt
+playwright>=1.40

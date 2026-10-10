@@ -1,0 +1,13 @@
+{
+  "text": "Test response",
+  "keywords": {
+    "age": 34,
+    "gender": "Male",
+    "email": "qa.test@example.com",
+    "postcode": "10001",
+    "zip": "10001",
+    "income": "50,000 - 74,999",
+    "employment": "Employed full time",
+    "children": 2
+  }
+}
