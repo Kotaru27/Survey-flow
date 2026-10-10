@@ -1,0 +1,29 @@
+[MAIN]
+jobs=1
+persistent=no
+
+[MESSAGES CONTROL]
+disable=
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    too-few-public-methods,
+    duplicate-code,
+    too-many-branches,
+    too-many-locals,
+    too-many-return-statements,
+    too-many-instance-attributes,
+    too-many-statements,
+    too-many-nested-blocks,
+    too-many-arguments,
+    import-outside-toplevel,
+    broad-exception-caught
+
+[FORMAT]
+max-line-length=120
+
+[BASIC]
+good-names=i,j,k,n,f,e,q,s,x,_,__
+
+[REPORTS]
+fail-under=9.5
