@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.log
+
+# runtime artifacts
+survey_memory.json
+persona.json
+traces.jsonl
