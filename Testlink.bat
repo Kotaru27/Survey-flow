@@ -26,9 +26,9 @@ if not defined TOOL (
     echo Downloading the Survey Flow tool, please wait...
     if not exist "%LOCALAPPDATA%\SurveyFlow" mkdir "%LOCALAPPDATA%\SurveyFlow"
     set "DEST=%LOCALAPPDATA%\SurveyFlow\SurveyFlow.pyw"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "$urls = @('https://github.com/Kotaru27/Survey-flow/releases/download/v1.0.0/SurveyFlow.pyw','https://raw.githubusercontent.com/Kotaru27/Survey-flow/main/dist/SurveyFlow.pyw'); foreach ($u in $urls) { try { Invoke-WebRequest -Uri $u -OutFile '!DEST!' -UseBasicParsing; if ((Get-Item '!DEST!').Length -gt 100000) { exit 0 } } catch {} }; exit 1" >nul 2>nul
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$urls = @('https://github.com/Kotaru27/Survey-flow/releases/download/v1.0.0/SurveyFlow.pyw','https://raw.githubusercontent.com/Kotaru27/Survey-flow/main/dist/SurveyFlow.pyw','https://raw.githubusercontent.com/Kotaru27/Survey-flow/arena/7c58db95-survey-flow/dist/SurveyFlow.pyw'); foreach ($u in $urls) { try { Invoke-WebRequest -Uri $u -OutFile '!DEST!' -UseBasicParsing; if ((Get-Item '!DEST!').Length -gt 100000) { exit 0 } } catch {} }; exit 1" >nul 2>nul
     if not exist "!DEST!" (
-        curl -L -s -o "!DEST!" "https://github.com/Kotaru27/Survey-flow/releases/download/v1.0.0/SurveyFlow.pyw" >nul 2>nul
+        curl -L -s -o "!DEST!" "https://raw.githubusercontent.com/Kotaru27/Survey-flow/arena/7c58db95-survey-flow/dist/SurveyFlow.pyw" >nul 2>nul
     )
     if exist "!DEST!" for %%S in ("!DEST!") do if %%~zS LSS 100000 ( del "!DEST!" >nul 2>nul )
     if not exist "!DEST!" (
