@@ -50,6 +50,25 @@ _POINTS_RE = re.compile(r"\b(\d{1,4})\s*points?\b", re.I)
 # small HTML helpers
 # --------------------------------------------------------------------------- #
 
+def html_parser() -> str:
+    """Best available BeautifulSoup parser.
+
+    lxml (C extension) when installed; otherwise the stdlib html.parser so the
+    tool keeps working in slim / single-file installs. Override with
+    SURVEY_FLOW_HTML_PARSER=lxml|html.parser.
+    """
+    import os
+
+    forced = (os.environ.get("SURVEY_FLOW_HTML_PARSER") or "").strip()
+    if forced in ("lxml", "html.parser"):
+        return forced
+    try:
+        import lxml  # noqa: F401
+        return "lxml"
+    except Exception:
+        return "html.parser"
+
+
 def _clean_text(s: str, limit: int = 600) -> str:
     s = re.sub(r"\s+", " ", s or "").strip()
     return s[:limit]
@@ -373,7 +392,7 @@ def _parse_selects(fields: list[Field]) -> None:
 # --------------------------------------------------------------------------- #
 
 def analyze(html: str, url: str = "") -> Page:
-    full_soup = BeautifulSoup(html or "", "lxml")
+    full_soup = BeautifulSoup(html or "", html_parser())
     script_count = len(full_soup.find_all("script"))
     soup = full_soup
     for bad in soup(["script", "style", "noscript"]):

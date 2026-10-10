@@ -8,3 +8,8 @@ __pycache__/
 survey_memory.json
 persona.json
 traces.jsonl
+
+# single-file build output (rebuild: python scripts/build_standalone.py)
+dist/*
+!dist/SurveyFlow.pyw
+SurveyFlow-results/
