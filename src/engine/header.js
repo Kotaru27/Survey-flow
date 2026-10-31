@@ -552,6 +552,7 @@ const exhausted=new Set();
 const forceNext=!!(MEM&&MEM.forceNext);
 function isAvoid(q,o){const k=qkey(q),op=qkey(o);if(!op)return false;return avoidExact.has(k+'||'+op)}
 const vis=e=>{if(!e||e.disabled)return false;try{
+ if(e.closest?.('.cf-carousel__content-item[aria-hidden="true"]'))return false;
  const shown=x=>{const r=x.getBoundingClientRect(),s=getComputedStyle(x);if(!(r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)!==0))return false;for(let p=x.parentElement;p;p=p.parentElement){const st=getComputedStyle(p),pr=p.getBoundingClientRect();if(/hidden|clip/.test(st.overflow+' '+st.overflowX+' '+st.overflowY)&&(r.right<=pr.left||r.left>=pr.right||r.bottom<=pr.top||r.top>=pr.bottom))return false}return true};
  if(shown(e))return true;
  // Styled native choices often hide the input and show its associated label.

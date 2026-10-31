@@ -26,6 +26,27 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
    // A colored instruction applies only to its own question. Never apply a single
    // red sentence to every radio group on a multi-question page.
    const instruction=redInstructionFor(q);
+   // A mix is a constraint over the carousel's cards, not a demand to select
+   // both radio answers on one card. Derive counts from the survey's own
+   // checked state so refreshes and existing answers remain authoritative.
+   const mixRule=instruction&&/^(?:(?:we\s+need\s+to|please|must)\s+)?(?:select|choose|pick)\s+(?:a\s+)?mix(?:ture)?\s+of\s+yes\s+and\s+no[.!]?$/i.test(norm(instruction.text));
+   if(mixRule&&pageModel?.kind==='auto_carousel_grid'&&q.owner==='radio'){
+    q.noGuess=true;
+    const current=pageModel.slides.find(s=>s.getAttribute('aria-hidden')==='false'&&s.querySelector('[role="radio"],input[type="radio"]'));
+    const options=q.els.filter(e=>current?.contains(e)&&vis(e));
+    if(!options.length)continue;
+    const response=e=>norm(e.textContent||label(e)).toLowerCase();
+    const yes=options.filter(e=>response(e)==='yes'),no=options.filter(e=>response(e)==='no');
+    if(yes.length!==1||no.length!==1){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'mix-options-ambiguous',question:q.key});continue}
+    if(options.some(isOn))continue;
+    const counts={yes:0,no:0};
+    for(const slide of pageModel.slides)for(const e of slide.querySelectorAll('[role="radio"],input[type="radio"]'))if(isOn(e)){const value=response(e);if(value==='yes'||value==='no')counts[value]++}
+    const wanted=counts.yes<=counts.no?yes[0]:no[0];
+    if(isAvoid(q.key,label(wanted))){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'mix-conflicts-with-memory',question:q.key});continue}
+    if(fireChoice(wanted)){const answer=label(wanted);selected.push(answer);pairs.push({question:q.key,option:qkey(answer)});pickedTrail.push(qkey(q.key)+'\u0000'+qkey(answer));acts.push('carousel-mix');acted++}
+    else{INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'carousel-selection-unverified',question:q.key})}
+    continue;
+   }
    const groupRule=namedGroupRule(instruction);
    if(groupRule&&groupRule.panel){
     const members=q.els.filter(e=>groupRule.panel.contains(e));

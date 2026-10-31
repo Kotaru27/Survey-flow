@@ -159,6 +159,14 @@ function coarseGroups(box,els){
 // sequential list owns the rest of the page's text.
 const isReentryQ=q=>reentryPattern.test(q.text||'')||q.els.some(e=>reentryPattern.test(attrBlob(e)));
 function detectCarousel(){
+ // This carousel changes cards automatically after a choice and may hide both
+ // navigation arrows. Count its real answer state, including off-screen cards.
+ for(const box of document.querySelectorAll('.cf-question--carousel-grid')){
+  const slides=[...box.querySelectorAll('.cf-carousel__content-item')].filter(s=>s.querySelector('[role="radio"],input[type="radio"]'));
+  if(slides.length<2)continue;
+  const answered=slides.filter(s=>[...s.querySelectorAll('[role="radio"],input[type="radio"]')].some(isOn)).length;
+  return {kind:'auto_carousel_grid',box,slides,total:slides.length,answered,done:answered===slides.length,hasAdvance:false};
+ }
  const cand=[...document.querySelectorAll('[class*=carousel i],[class*=swiper i],[class*=slide i],[class*=arrow i],[aria-label*=next i],[aria-label*=previous i],[aria-label*=prev i],[class*=next i],[class*=prev i]')].filter(e=>vis(e)&&!e.disabled);
  // The list that holds the slides matches "slide" just as its own arrows do, and
  // taking it for the advance means clicking a div that does nothing while the real
@@ -183,7 +191,7 @@ function detectSequential(){
 // The models whose page is one widget rather than a list of controls. Their item count
 // is the list of prompts on the page, so it - and nothing the plain scanner makes of the
 // widget's own markup - decides whether Next may be pressed.
-const WIDGET_MODELS=new Set(['emo_resonance','scale_drop','timeline','carousel_grid']);
+const WIDGET_MODELS=new Set(['emo_resonance','scale_drop','timeline','carousel_grid','auto_carousel_grid']);
 function detectPageModel(){
  const pool=dragPool();
  return detectScaleDrop(pool)||detectTimeline(pool)||detectEmo(pool)||detectCarousel()||detectSequential();
@@ -205,7 +213,12 @@ function customAdvance(){
 // and a slot only counts as done once the answer is actually in it.
 function refreshCustom(){
  const m=pageModel;if(!m)return;
- if(m.kind==='carousel_grid'){
+ if(m.kind==='auto_carousel_grid'){
+  m.slides=m.slides.filter(s=>s.isConnected!==false);
+  m.total=m.slides.length;
+  m.answered=m.slides.filter(s=>[...s.querySelectorAll('[role="radio"],input[type="radio"]')].some(isOn)).length;
+  m.done=m.total>0&&m.answered===m.total;
+ }else if(m.kind==='carousel_grid'){
   if(m.box&&m.box.isConnected!==false){
    const g=boxGroups(m.box,true);
    m.total=g.total;m.answered=g.answered;m.items=g.items||[];
