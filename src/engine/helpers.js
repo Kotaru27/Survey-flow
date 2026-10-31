@@ -42,7 +42,7 @@ function matchWant(labels,want,kind){
  if(kind==='gender')return -1;
  return norm.findIndex(s=>s.indexOf(w)>=0);
 }
-function chooseFromGroup(items,want,kind,qt,key){
+function chooseFromGroup(items,want,kind,qt,key,previousColumn){
   const k=key||qkey(qt||'');
   const active=items.filter(e=>!e.disabled&&vis(e)&&!(e.matches?.('input')&&e.checked)&&e.getAttribute?.('aria-checked')!=='true');if(!active.length)return false;
  let pool=active.filter(e=>!isAvoid(k,label(e)));
@@ -71,8 +71,11 @@ function chooseFromGroup(items,want,kind,qt,key){
  // every option before this counts as the per-item shape, or a real yes/no question would
  // be answered at random instead of from the persona.
  if(pick<0&&want)pick=tryText(want,kind);
- if(pick<0&&usePersona&&kind==='yesno')pick=tryText(P.YesNo,kind);
- if(pick<0)pick=rnd(short.length);
+ if(pick<0&&usePersona&&kind==='yesno'&&previousColumn===undefined)pick=tryText(P.YesNo,kind);
+ if(pick<0){
+  const choices=short.map((e,i)=>({e,i})).filter(x=>previousColumn===undefined||items.indexOf(x.e)!==previousColumn);
+  pick=(choices.length?choices:short.map((e,i)=>({e,i})))[rnd(choices.length||short.length)].i;
+ }
  const chosen=short[pick];
  const ok=fireChoice(chosen);if(ok){selected.push(label(chosen));pairs.push({question:k,option:qkey(label(chosen))});pickedTrail.push(qkey(k)+'\u0000'+qkey(label(chosen)))}return ok;
 }

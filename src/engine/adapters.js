@@ -290,7 +290,8 @@ let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&
    const c=qt.toLowerCase();
    const kind=/gender|sex/.test(c)?'gender':/yes|no|agree|disagree|would you|have you|do you|did you/.test(c)?'yesno':/age|year/.test(c)?'age':/city|town|where do you go|which region|where do you live|county|\/state\b/.test(c)?'city':'middle';
    let want=usePersona?(kind==='gender'?P.Gender:kind==='age'?String(P.Age):kind==='city'?P.City:''):'';
-   if(chooseFromGroup(g,want,kind,qt,q.key)){acts.push('radio');acted++}
+   const previous=q.grid?questions.filter(x=>x!==q&&x.grid&&x.owner==='radio'&&x.els.length===q.els.length).map(x=>x.els.findIndex(isOn)).filter(i=>i>=0).pop():undefined;
+   if(chooseFromGroup(g,want,kind,qt,q.key,previous)){acts.push('radio');acted++}
    if(q.grid)gridRow=true;
   }}
  let checkQs=dragOnly?[]:questions.filter(q=>q.owner==='check'&&!(ACC_SINGLE_CHOICE&&ACCORDIONS.length&&accSelected()>0)&&!questions.some(n=>n.exclusiveNone&&qAnswered(n))&&!q.noGuess&&!rhSettled(q));
@@ -319,17 +320,18 @@ const context=qt.toLowerCase();
    if(pick.length)usable=[...pick,...usable.filter(e=>pick.indexOf(e)<0)];
   }
   usable=usable.filter(e=>!wouldRebuildBanned(qk,label(e)));
-  if(!usable.length)usable=cand;
+  if(!usable.length){exhausted.add(qk);INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'no-safe-alternative',question:qk});continue}
   if(prevOn.length){const diff=usable.filter(e=>prevOn.indexOf(label(e))<0);if(diff.length)usable=diff}
   if(/none of the above|none above/i.test(context)&&!usable.length){usable=active.slice(0,1)}
   if(!usable.length)continue;
 let n;
    if(needMore){n=1}else{
-     n=Math.max(1,Math.min(P.MultiSelectCount,usable.length));
-     if(!usePersona){shuffle(usable);n=1+rnd(Math.min(P.MultiSelectCount,usable.length))}
+     const max=Math.max(1,Math.min(Number(P.MultiSelectCount)||1,usable.length));
+     if(!remembered)shuffle(usable);
+     n=1+rnd(max);
    }
    // One cell of a checkbox matrix is one box: a grid row is not a "select N" list.
-   if(q.grid||ACC_SINGLE_CHOICE&&ACCORDIONS.length)n=1;
+   if(ACC_SINGLE_CHOICE&&ACCORDIONS.length)n=1;
    if(accordionMore(q))n=Math.min(n,Math.max(1,Math.max(1,Math.min(8,Number(P.MultiSelectCount)||1))-accSelected()));
    if(usable.some(exclusive)){
     const ordinary=usable.filter(e=>!exclusive(e));
