@@ -140,7 +140,8 @@ const selectAnswered=s=>{if(!s||s.selectedIndex<0)return false;
 const qAnswered=q=>{if(q.type==='select')return q.els.some(selectAnswered);
  if(q.type==='text')return q.els.some(e=>(e.isContentEditable?String(e.textContent||'').trim()!=='':String(e.value||'').trim()!=='')&&(!e.validity||e.validity.valid!==false));
  return !!q.els.some(isOn)};
-const qOpen=q=>!(q.owner==='check'&&ACCORDIONS.length&&ACC_SINGLE_CHOICE&&accSelected()>0)&&!q.exclusiveNone&&!((q.owner==='check')&&questions.some(n=>n.exclusiveNone&&qAnswered(n)))&&!skipQ.has(q.key)&&!qAnswered(q)&&q.els.some(e=>!e.disabled&&vis(e));
+const accordionMore=q=>q.owner==='check'&&!q.noGuess&&ACCORDIONS.length&&!ACC_SINGLE_CHOICE&&q.els.some(e=>ACCORDIONS.some(a=>a.panel?.contains(e)))&&accSelected()<Math.max(1,Math.min(8,Number(P.MultiSelectCount)||1))&&q.els.some(e=>!e.disabled&&vis(e)&&!isOn(e));
+const qOpen=q=>!(q.owner==='check'&&ACCORDIONS.length&&ACC_SINGLE_CHOICE&&accSelected()>0)&&!q.exclusiveNone&&!((q.owner==='check')&&questions.some(n=>n.exclusiveNone&&qAnswered(n)))&&!skipQ.has(q.key)&&(!qAnswered(q)||accordionMore(q))&&q.els.some(e=>!e.disabled&&vis(e));
 // A lone choice control only earns an answer (instead of being treated as page
 // furniture and skipped) when it sits under something that reads like a question.
 const looksLikeQuestion=q=>!!q.grid||/\?|\brequired\b|\bselect\b|\bchoose\b|\btick\b|\bcheck\b|\bagree\b|\brate\b|\bplease\b/i.test(q.text||'')||q.els.some(e=>/^(radio|checkbox|option)$/i.test(String(e.getAttribute&&e.getAttribute('role')||'')));

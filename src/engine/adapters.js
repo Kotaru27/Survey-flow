@@ -247,7 +247,11 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
  // q.noGuess closes the ones the key reported but refused to answer - no rule, ambiguous
  // rule, unreadable options - so the generic path cannot pick one for it either.
 const rhSettled=q=>!!(q.noGuess||(q.els&&q.els.length&&(rhRuleFor(q)||rhRuleForCheck(q)||rhTrapRulesFor(q).length)&&rhAnswered(q)));
-let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&&!q.noGuess&&!rhSettled(q));
+// A separate exclusive radio may appear before lazily mounted accordion
+// checkboxes. Do not treat it as a standalone required radio while the
+// surrounding accordion choices are still being discovered.
+const pendingAccordionExclusive=q=>!!(ACCORDIONS.length&&accQuestionRoot&&q.els.length&&q.els.every(e=>accQuestionRoot.contains(e)&&/^(?:none(?: of (?:the|these) (?:above|listed))?|not applicable)$/i.test(norm(label(e)))));
+let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&&!pendingAccordionExclusive(q)&&!q.noGuess&&!rhSettled(q));
  // One row of a matrix per step. A grid the survey re-reads after every click is answered
  // row by row, and Next belongs to the page: it is not pressed until the rows are done.
  let gridRow=false,gridCell=false;
@@ -272,7 +276,7 @@ let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&
    const qt=q.text,qk=q.key;
    let prevOn=[];
    if(reopen.has(qk)){prevOn=g.filter(e=>!e.disabled&&isOn(e)).map(label);for(const e of g){if(!e.disabled&&isOn(e)){fire(e);unmarkSel(e)}}}
-   if(g.some(e=>!e.disabled&&isOn(e))&&!needMore)continue;
+   if(g.some(e=>!e.disabled&&isOn(e))&&!needMore&&!accordionMore(q))continue;
    if(q.grid&&gridCell)continue;
   const active=g.filter(e=>!e.disabled&&vis(e)&&!isOn(e));
   if(!active.length)continue;
@@ -302,6 +306,7 @@ let n;
    }
    // One cell of a checkbox matrix is one box: a grid row is not a "select N" list.
    if(q.grid||ACC_SINGLE_CHOICE&&ACCORDIONS.length)n=1;
+   if(accordionMore(q))n=Math.min(n,Math.max(1,Math.max(1,Math.min(8,Number(P.MultiSelectCount)||1))-accSelected()));
    if(usable.some(exclusive)){
     const ordinary=usable.filter(e=>!exclusive(e));
     usable=ordinary.length?ordinary:[usable.find(exclusive)];

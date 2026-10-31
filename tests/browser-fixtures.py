@@ -57,6 +57,15 @@ with sync_playwright() as p:
   return f'''<section class="accordion-item"><button type="button" class="accordion-header" aria-controls="panel{index}" aria-expanded="false" onclick="openGroup({index},{size})">Group {index}</button><div class="panel" id="panel{index}" hidden></div></section>'''
  structuredScript='''<script>function openGroup(i,n){document.querySelectorAll('.panel').forEach(x=>x.hidden=true);document.querySelectorAll('.accordion-header').forEach(x=>x.setAttribute('aria-expanded','false'));let p=document.querySelector('#panel'+i), h=document.querySelector('[aria-controls=panel'+i+']');h.setAttribute('aria-expanded','true');p.hidden=false;if(!p.dataset.loaded){p.dataset.loaded='1';setTimeout(()=>{for(let j=0;j<n;j++){let l=document.createElement('label');l.innerHTML='<input type=checkbox name=items data-choice>Item '+i+'-'+j;p.appendChild(l)}},75)}}</script>'''
  run('accordion-many-groups-single-open-delayed-controls',pageWrap('<p>Select all that apply</p>'+''.join(structuredGroup(i,n) for i,n in enumerate([4,6,3,8,5],1))+radio('None of the above','none')+structuredScript),structuredAccordion)
+ def duplicateHeaders(pg):
+  d=None
+  for _ in range(12):
+   d=step(pg)
+   if pg.locator('#next').get_attribute('data-clicked')=='1':break
+  assert pg.locator('input:checked').count()==2,d
+  assert pg.locator('#next').get_attribute('data-clicked')=='1',d
+ sameGroup=lambda label: f'''<div><div class="group-title" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden">Group</div><div class="panel" hidden>{checkbox(label,'shared')}</div></div>'''
+ run('accordion-repeated-headings-separate-groups',pageWrap('<p>Choose two items</p>'+sameGroup('Alpha')+sameGroup('Beta')),duplicateHeaders)
  def redPosition(pg):
   d=step(pg); print('red position',d['action'],d.get('redHerring'),d.get('instructions'))
   assert pg.locator('input:checked').count()==1

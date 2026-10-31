@@ -19,7 +19,7 @@ function accTriggerCandidates(){
  const selectors='details > summary,[aria-expanded],[class*="category-header" i],[class*="group-title" i],[class*="accordion-header" i],[class*="accordion-trigger" i],[class*="accordion-toggle" i],[class*="collapse-toggle" i],[class*="expand-toggle" i],[class*="expander" i],[class*="category-title" i],[class*="group-header" i],[data-accordion-trigger]';
  return [...new Set(document.querySelectorAll(selectors))].filter(e=>vis(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true');
 }
-function accModel(trigger){
+function accModel(trigger,index){
  let item=trigger.closest('details,[class*="accordion-item" i],[data-accordion-item],[class*="collapsible" i],[role="treeitem"]');
  let panel=null;
  const controlled=trigger.getAttribute('aria-controls');
@@ -42,10 +42,10 @@ function accModel(trigger){
  if(!structured||(!closed&&!expanded&&!hiddenPanel&&!visuallyOpen))return null;
  const label=norm(trigger.getAttribute('aria-label')||trigger.innerText||trigger.textContent||'').slice(0,140);
  if(!label||/^(next|continue|submit|finish|back)$/i.test(label))return null;
- const key=String(trigger.id||controlled||'')+'|'+label+'|'+[...document.querySelectorAll('summary,[aria-expanded],.accordion-header,.accordion-trigger')].indexOf(trigger);
+ const key=String(trigger.id||controlled||'')+'|'+label+'|'+index;
  return {trigger,item,panel,key,label,expanded:(expanded||visuallyOpen)&&!hiddenPanel,closed:closed||hiddenPanel,content};
 }
-const ACCORDIONS=accTriggerCandidates().map(accModel).filter(Boolean);
+const ACCORDIONS=accTriggerCandidates().map((trigger,index)=>accModel(trigger,index)).filter(Boolean);
 const accQuestionRoot=ACCORDIONS[0]?.trigger.closest('.cf-question,.question,.question-container,fieldset,[data-question]');
 const accInstructionText=norm(accQuestionRoot?.querySelector('legend,.question-title,[class*="question-title" i],h1,h2,h3,h4')?.textContent||'');
 const ACC_SINGLE_CHOICE=/\b(?:select|choose|pick|mark|tick)\s+(?:only\s+)?one\b|\b(?:single|one)\s+answer\b|\bexactly\s+one\b/i.test(accInstructionText);
