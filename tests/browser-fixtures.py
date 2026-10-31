@@ -161,7 +161,7 @@ with sync_playwright() as p:
   d=step(pg)
   assert pg.get_by_label('North Shore').is_checked(),d
   assert d['instructions']['blocked']==0,d
- run('single-choice-spacing-variant-only',pageWrap('<span style="color:red">Select Northshore OR Not listed</span>'+radio('North Shore')+radio('Another place')),spacingOnly)
+ run('single-choice-spacing-variant-only',pageWrap('<span style="color:red">Select Northshore OR Unknown place</span>'+radio('North Shore')+radio('Another place')),spacingOnly)
  def foreverEmpty(pg):
   d=step(pg)
   assert 'render-waiting' in d['action'] and d['unanswered']>0,d
