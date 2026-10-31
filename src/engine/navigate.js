@@ -8,8 +8,9 @@ await new Promise(resolve=>{
  let last=-1,stable=0,frames=0;
  const raf=window.requestAnimationFrame||(f=>setTimeout(f,16));
  const again=()=>{
-  const go=()=>{clearTimeout(timer);raf(tick)};
-  const timer=setTimeout(go,10);
+  let fired=false;
+  const go=()=>{if(fired)return;fired=true;clearTimeout(timer);tick()};
+  const timer=setTimeout(go,20);
   raf(go);
  };
  const tick=()=>{
