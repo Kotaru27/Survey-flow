@@ -1,6 +1,6 @@
 """Synthetic auto-advancing carousel regression; no survey content."""
 from pathlib import Path
-import json
+import json,time,re
 from playwright.sync_api import sync_playwright
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -77,4 +77,28 @@ with sync_playwright() as p:
   seen.update(page.locator('[role=radio][aria-checked=true]').all_text_contents())
  assert seen=={'Yes','No'},seen
  print('PASS carousel without a mix instruction does not always use the persona choice',seen)
+ # Compare identical no-instruction carousels with and without the optional
+ # batching path; both must answer every item before navigating.
+ fast_html=longhtml.replace('<font color="red">we need to select mix of yes and no</font>','')
+ old_engine,count=re.subn(r'// CAROUSEL_FAST_BEGIN[\s\S]*?// CAROUSEL_FAST_END', '', engine, count=1)
+ assert count==1
+ timings={}
+ for name,code in [('baseline',old_engine),('optimized',engine)]:
+  page.close();page=b.new_page();page.set_content(fast_html);start=time.perf_counter();calls=0
+  while calls<35:
+   result=page.evaluate(code);calls+=1
+   n=page.locator('[role=radio][aria-checked=true]').count()
+   if n<23:assert page.locator('#next').get_attribute('data-clicked') is None,result
+   if page.locator('#next').get_attribute('data-clicked')=='1':break
+  assert n==23 and page.locator('#next').get_attribute('data-clicked')=='1',result
+  timings[name]=(calls,round((time.perf_counter()-start)*1000))
+ assert timings['optimized'][0]<timings['baseline'][0],timings
+ print('PASS carousel batching answers every card before Next; passes, elapsed ms:',timings)
+ # A transition that has not yet advanced must not cause the same card to be
+ # clicked again or permit Next before the remaining cards are answered.
+ delayed=fast_html.replace("s.setAttribute('aria-hidden','true');n.setAttribute('aria-hidden','false')", "setTimeout(()=>{s.setAttribute('aria-hidden','true');n.setAttribute('aria-hidden','false')},80)")
+ page.close();page=b.new_page();page.set_content(delayed)
+ result=page.evaluate(engine);assert page.locator('[role=radio][aria-checked=true]').count()==1,result
+ assert page.locator('#next').get_attribute('data-clicked') is None,result
+ print('PASS delayed carousel transition keeps remaining cards and Next untouched')
  b.close()

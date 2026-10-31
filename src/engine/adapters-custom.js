@@ -42,6 +42,31 @@ if(!completion&&!termination){
 // the model dispatch.js chose, so a second open-text slot never receives a copy of the
 // first answer, the emo-resonance circle is actually dragged rather than clicked, and a
 // timeline card is dropped into a slot instead of being left on the board.
+// CAROUSEL_FAST_BEGIN
+// Immediately advancing cards can be answered in one pass. Only use this path
+// with no visible instructions or validations and one visible radio group; a
+// delayed transition or unverified selection returns to the ordinary loop.
+if(!completion&&!termination&&pageModel?.kind==='auto_carousel_grid'&&acts.includes('radio')&&!redBoldInstructions.length&&!valErr.length&&!reopen.size&&questions.every(q=>q.els.every(e=>pageModel.box.contains(e)))){
+ for(let batch=0;batch<8&&acted<MAXACT;batch++){
+  const active=pageModel.slides.filter(s=>s.getAttribute('aria-hidden')==='false'&&vis(s));
+  if(active.length!==1)break;
+  const slide=active[0];
+  const current=buildQuestions(slide,false).filter(q=>q.owner==='radio');
+  if(current.length!==1||current[0].els.length<2||current[0].els.some(isOn))break;
+  const q=current[0],text=rhLocalText(q);
+  if(rhRuleFor(q,text)||rhIsCheck(text)||rhTrapRulesFor(q).length)break;
+  const options=q.els.filter(e=>vis(e)&&!e.disabled);
+  const c=q.text.toLowerCase();
+  const kind=/gender|sex/.test(c)?'gender':/yes|no|agree|disagree|would you|have you|do you|did you/.test(c)?'yesno':/age|year/.test(c)?'age':/city|town|where do you go|which region|where do you live|county|\/state\b/.test(c)?'city':'middle';
+  const want=usePersona?(kind==='gender'?P.Gender:kind==='age'?String(P.Age):kind==='city'?P.City:''):'';
+  if(options.length<2||!chooseFromGroup(options,want,kind,q.text,q.key,-1))break;
+  acts.push('carousel-batch');acted++;
+  // No guessing about an animation: if the selected card is still current,
+  // let the outer loop wait and inspect the page again.
+  if(slide.getAttribute('aria-hidden')==='false')break;
+ }
+}
+// CAROUSEL_FAST_END
 if(!completion&&!termination&&pageModel){
  const m=pageModel;
  if(m.kind==='sequential_open_text'){

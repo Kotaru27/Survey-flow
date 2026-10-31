@@ -1875,6 +1875,9 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 	// The cap is a runaway guard, not a budget: a long brand audit asks one question
 	// per brand and runs to several hundred steps at a few dozen milliseconds each, so a
 	// survey that is still making progress must never be cut off by it.
+	// The scoped answer key does not change within one run. Reusing it avoids
+	// reopening and decoding the executable or config for every card.
+	redHerringRules := readRedHerring(root, u)
 	staleTargets := true
 	for step := 1; step <= 900; step++ {
 		lastStep = step
@@ -1962,7 +1965,7 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 			// The attention checks the study ends an interview over. They are answered from
 			// config/red-herring.json, before anything else, and never re-opened: a trap
 			// answer here is the one mistake that cannot be learned back out of.
-			"redHerring": readRedHerring(root, u)}
+			"redHerring": redHerringRules}
 		forceUsed := forceNext
 		forceNext = false // this step spent the forced Next
 		expr := strings.NewReplacer(
@@ -2198,7 +2201,7 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 				}
 				parts = append(parts, fmt.Sprintf("%s [%s] %q%s%s", str(d["q"]), str(d["did"]), str(d["text"]), how, extra))
 			}
-			logLine(logFile, "Step %d: attention-check scan (%d rule(s) loaded): %s", step, len(readRedHerring(root, u)), strings.Join(parts, " / "))
+			logLine(logFile, "Step %d: attention-check scan (%d rule(s) loaded): %s", step, len(redHerringRules), strings.Join(parts, " / "))
 		}
 		for _, e := range asMaps(m["redHerring"]) {
 			q, did := str(e["q"]), str(e["did"])
