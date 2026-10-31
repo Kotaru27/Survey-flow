@@ -28,7 +28,6 @@ jobs:
           python tests/recovery-repro.py
           python tests/multi-page-journey.py
   build-test:
-    needs: browser-fixtures
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

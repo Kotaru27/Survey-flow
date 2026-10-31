@@ -177,8 +177,22 @@ with sync_playwright() as p:
  run('red-out-of-range-fails-closed',pageWrap('<strong class="red">Select option 9</strong>'+radio('A')+radio('B')+radio('C')),numberOutOfRange)
  def redPlainText(pg):
   d=step(pg)
-  assert d['instructions']['blocked']==0 and d['unanswered']==0,d
- run('red-not-bold-is-not-special-command',pageWrap('<span style="color:red">Please select the invisible triangle</span>'+radio('A')+radio('B')),redPlainText)
+  assert d['instructions']['blocked']>0 and d['unanswered']>0,d
+  assert pg.locator('#next').get_attribute('data-clicked') is None,d
+ run('red-not-bold-unknown-blocks',pageWrap('<span style="color:red">Please select the invisible triangle</span>'+radio('A')+radio('B')),redPlainText)
+ def crossQuestion(pg):
+  d=step(pg)
+  assert pg.get_by_label('Female',exact=True).is_checked(),d
+  assert pg.locator('select').input_value() in ['25','30','35','40'],d
+  assert d['instructions']['blocked']==0 and pg.locator('#next').get_attribute('data-clicked')=='1',d
+ run('cross-question-red-choice-and-age',
+  '<html><head>'+STYLE+'</head><body><form><div class="question"><h3>How do you identify?</h3><span style="color:red">Please select Females only and age 25 - 40</span>'+radio('Male','g')+radio('Female','g')+'</div><div class="question"><h3>How old are you?</h3><select name="age"><option value="">Please select</option><option>18</option><option>25</option><option>30</option><option>35</option><option>40</option><option>50</option></select></div><button type="button" id="next" onclick="this.dataset.clicked=1">Next</button></form></body></html>',crossQuestion)
+ def minimumRequired(pg):
+  d=step(pg)
+  assert pg.locator('input[type=checkbox]:checked').count()==3,d
+  assert pg.get_by_label('Beta').is_checked(),d
+  assert d['instructions']['blocked']==0,d
+ run('minimum-count-includes-named-option',pageWrap('<span style="color:red">Select at least three options including Beta</span>'+checkbox('Alpha')+checkbox('Beta')+checkbox('Gamma')+checkbox('Delta')),minimumRequired)
  def explicitNotGeneric(pg):
   d=step(pg)
   assert d['instructions']['blocked']>0 and d['unanswered']>0,d
