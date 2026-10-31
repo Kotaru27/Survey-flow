@@ -79,18 +79,21 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
     // Category, exclusion and compound constraints stay for review.
     if(/\b(from the|within the|except|excluding|other than)\b/i.test(instruction.text)){q.noGuess=true;INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'selection-count-additional-constraint',question:q.key,instruction:instruction.text});continue}
     let requiredTarget=null;
-    if(/\b(including|include|must contain)\b/i.test(instruction.text)){
-     const m=instruction.text.match(/\b(?:including|include|must contain)\s+(?:the\s+)?(.+?)[.!]?$/i);
-     const want=norm(m?.[1]||'').toLowerCase();
-     const hits=usable.filter(e=>norm(label(e)).toLowerCase()===want);
+    if(/\b(including|include|must contain|along with|together with)\b/i.test(instruction.text)){
+     const m=instruction.text.match(/\b(?:including|include|must contain|along with|together with)\s+(?:the\s+)?(.+?)[.!]?$/i);
+     const want=norm(m?.[1]||'').toLowerCase().replace(/^["'“”‘’]+|["'“”‘’]+$/g,'').trim();
+     // Accept a partial label only at a word boundary and only if it names
+     // exactly one visible option. Never guess when the shorthand is ambiguous.
+     const hits=usable.filter(e=>{const text=norm(label(e)).toLowerCase();return text===want||(want.length>=3&&text.startsWith(want+' '))});
      if(!want||hits.length!==1){q.noGuess=true;INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'required-option-not-identified',question:q.key,instruction:instruction.text});continue}
      requiredTarget=hits[0];
+     if(isAvoid(q.key,label(requiredTarget))){q.noGuess=true;INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'instruction-conflicts-with-termination-memory',question:q.key});continue}
     }
     const needsRequired=requiredTarget&&!isOn(requiredTarget);
     if(needsRequired&&currently.length>=countRule.max){q.noGuess=true;INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'required-option-exceeds-maximum',question:q.key});continue}
     const minimum=Math.max(1,countRule.min);
     const needed=Math.max(0,minimum-currently.length-(needsRequired?1:0));
-    const choices=usable.filter(e=>e!==requiredTarget&&!isOn(e)&&!/^(none|none of|not applicable)\b/i.test(norm(label(e))));
+    const choices=usable.filter(e=>e!==requiredTarget&&!isOn(e)&&!isAvoid(q.key,label(e))&&!/^(none|none of|not applicable)\b/i.test(norm(label(e))));
     if(needed>choices.length){q.noGuess=true;INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'selection-count-unavailable',question:q.key});continue}
     let ok=true;
     const targets=(needsRequired?[requiredTarget]:[]).concat(choices.slice(0,needed));

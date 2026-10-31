@@ -34,6 +34,17 @@ with sync_playwright() as p:
  setpage(page,minimum);d=page.evaluate(script());assert page.get_by_label('Alpha').is_checked() and page.get_by_label('Beta').is_checked(),d;assert page.locator('#result').inner_text()=='Accepted',d;assert page.locator('#next').get_attribute('data-count')=='1',d
  print('PASS minimum-count validation added a choice and continued on the same page')
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ compound='''<div class="question"><h3>Choose items</h3><strong style="color:red">Select more than 2 along with Utility</strong><label><input type=checkbox name=items checked>Alpha</label><label><input type=checkbox name=items checked>Beta</label><label><input type=checkbox name=items checked>Gamma</label><label><input type=checkbox name=items>Utility service</label></div><div role=alert>You selected other items without selecting 'Utility service'. Please select 'Utility service' if applicable.</div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
+ setpage(page,compound);d=page.evaluate(script());assert page.get_by_label('Utility service').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d;assert d['instructions']['blocked']==0,d
+ print('PASS compound count and named option corrects existing choices and retries')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ setpage(page,compound.replace('<div role=alert>', '<div role=alert hidden>'));d=page.evaluate(script());assert page.get_by_label('Utility service').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
+ print('PASS compound instruction includes required option before validation')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ ambiguous=compound.replace('</div><div role=alert>', '<label><input type=checkbox name=items>Utility supply</label></div><div role=alert>')
+ setpage(page,ambiguous);d=page.evaluate(script());assert not page.get_by_label('Utility service').is_checked(),d;assert page.locator('#next').get_attribute('data-count') is None,d;assert d['instructions']['blocked']>0,d
+ print('PASS ambiguous required label is held for review')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
  summary='''<div class="question"><h3>Choose an item and provide details</h3><label><input type=radio name=item checked>Alpha</label><label>Details <input type=text id=detail oninput="document.querySelector('#local-error').hidden=true"></label><div class=error id=local-error>Please provide an answer.</div></div><div role=alert>One or more questions require further input.</div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
  setpage(page,summary);d=page.evaluate(script({'needOpen':True}));assert page.locator('#detail').input_value(),d;assert page.locator('#local-error').is_hidden(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
  d=page.evaluate(script({'needOpen':True}));assert page.locator('#next').get_attribute('data-count')=='1',d
