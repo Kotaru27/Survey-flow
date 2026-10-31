@@ -129,6 +129,8 @@ func TestPIDMemoryImportsPreviousPerLinkFile(t *testing.T) {
  if err:=newStore.save();err!=nil { t.Fatal(err) }
  if _,err:=os.Stat(old.path);err!=nil { t.Fatal("old memory was removed") }
  if _,err:=os.Stat(filepath.Join(root,"Memory","p123456789.json"));err!=nil { t.Fatal(err) }
+ if err:=os.Remove(newStore.path);err!=nil { t.Fatal(err) }
+ if got:=openMemory(root,u).avoidFor(fp);len(got)!=0 { t.Fatal("deleted PID memory was silently resurrected") }
 }
 
 func TestMemoryFingerprintKeepsStableIdentity(t *testing.T) {

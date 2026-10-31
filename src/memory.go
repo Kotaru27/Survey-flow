@@ -182,6 +182,7 @@ type MemoryStore struct {
 	path    string
 	Surveys map[string]*SurveyMemory `json:"surveys"`
 	readFailed bool
+	migrationMarker string
 }
 
 func studyMemoryPath(root, raw string) string {
@@ -222,12 +223,15 @@ func openMemory(root string, study ...string) *MemoryStore {
 	if len(study)>0 && study[0]!="" && !s.readFailed {
 		// Import only this exact link; retain any other links already in the PID file.
 		fp:=memoryFingerprint(study[0])
-		if s.Surveys[fp]==nil {
+		marker:=filepath.Join(root,"data","memory-migrations",strings.TrimPrefix(fp,"sha256:")+".done")
+		_,markerErr:=os.Stat(marker)
+		if markerErr!=nil&&!os.IsNotExist(markerErr){s.readFailed=true}
+		if s.Surveys[fp]==nil && os.IsNotExist(markerErr) && !s.readFailed {
 			for _,oldPath:=range []string{previousStudyMemoryPath(root,study[0]),filepath.Join(root,"data","survey-success-memory.json")} {
 				if b,err:=os.ReadFile(oldPath);err==nil {
 					var old struct{ Surveys map[string]*SurveyMemory `json:"surveys"` }
 					if json.Unmarshal(b,&old)!=nil { s.readFailed=true;break }
-					if old.Surveys[fp]!=nil { s.Surveys[fp]=old.Surveys[fp];break }
+					if old.Surveys[fp]!=nil { s.Surveys[fp]=old.Surveys[fp];s.migrationMarker=marker;break }
 				} else if !os.IsNotExist(err) { s.readFailed=true;break }
 			}
 		}
@@ -265,7 +269,13 @@ func (s *MemoryStore) save() error {
  if _, err = f.Write(b); err != nil { f.Close(); return err }
  if err = f.Sync(); err != nil { f.Close(); return err }
  if err = f.Close(); err != nil { return err }
- return os.Rename(name, s.path)
+ if err = os.Rename(name, s.path); err != nil { return err }
+ if s.migrationMarker!="" {
+  if err=os.MkdirAll(filepath.Dir(s.migrationMarker),0700);err!=nil{return err}
+  if err=os.WriteFile(s.migrationMarker,[]byte("migrated\n"),0600);err!=nil{return err}
+  s.migrationMarker=""
+ }
+ return nil
 }
 
 // memoryFingerprint is intentionally conservative: two test links must not share
