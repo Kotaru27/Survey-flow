@@ -940,14 +940,33 @@ func findBrowser(root string) string {
 	return ""
 }
 
-// readRedHerring loads the attention-check answer key. It is a config file rather than
-// code because the checks are study-specific: a new study brings its own questions, and
-// the person running it is the one who can read them off the screen.
+// An optional study key can be appended to the Windows executable. The fixed
+// footer makes it possible to distribute one file without publishing the key.
+func readEmbeddedRedHerring(path string) []byte {
+	f, err := os.Open(path)
+	if err != nil { return nil }
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil || st.Size() < 16 { return nil }
+	footer := make([]byte, 16)
+	if _, err := f.ReadAt(footer, st.Size()-16); err != nil || string(footer[:8]) != "SFAQKEY1" { return nil }
+	n := binary.LittleEndian.Uint64(footer[8:])
+	if n == 0 || n > 4*1024*1024 || n > uint64(st.Size()-16) { return nil }
+	b := make([]byte, int(n))
+	if _, err := f.ReadAt(b, st.Size()-16-int64(n)); err != nil || !json.Valid(stripBOM(b)) { return nil }
+	return b
+}
+
+// The embedded key and optional external keys remain isolated by study.
 func readRedHerring(root, surveyLink string) []map[string]any {
-	b, e := os.ReadFile(filepath.Join(root, "config", "red-herring.json"))
-	if e != nil {
-		return nil
+	if path, err := os.Executable(); err == nil {
+		if result := parseRedHerring(readEmbeddedRedHerring(path), surveyLink); len(result) > 0 { return result }
 	}
+	b, _ := os.ReadFile(filepath.Join(root, "config", "red-herring.json"))
+	return parseRedHerring(b, surveyLink)
+}
+
+func parseRedHerring(b []byte, surveyLink string) []map[string]any {
 	var doc struct {
 		StudyKey   string           `json:"studyKey"`
 		StudyURL   string           `json:"studyUrl"`
@@ -1495,7 +1514,7 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 		attemptCeiling = total
 	}
 	logLine(logFile, "Target: %d complete(s); up to %d run(s) will be attempted to reach it.", total, attemptCeiling)
-	logLine(logFile, "Attention-check key: %d rule(s) loaded from config/red-herring.json.", len(readRedHerring(root, u)))
+	logLine(logFile, "Attention-check key: %d rule(s) loaded for this study.", len(readRedHerring(root, u)))
 	for runNo <= attemptCeiling && batch.Completed < total && !abort {
 		windowNo++
 		if windowCount <= 1 && windowNo > 1 {

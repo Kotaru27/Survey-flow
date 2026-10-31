@@ -1,12 +1,30 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestEmbeddedStudyKey(t *testing.T) {
+	key := []byte(`{"studyUrl":"https://survey.example.test/demo?__etk=EXAMPLE","rules":[{"contains":"Synthetic check?","answer":"Alpha","strict":true}]}`)
+	footer := make([]byte, 16)
+	copy(footer, "SFAQKEY1")
+	binary.LittleEndian.PutUint64(footer[8:], uint64(len(key)))
+	path := filepath.Join(t.TempDir(), "candidate.exe")
+	data := append(append([]byte("MZ fixture"), key...), footer...)
+	if err := os.WriteFile(path, data, 0600); err != nil { t.Fatal(err) }
+	got := readEmbeddedRedHerring(path)
+	if string(got) != string(key) { t.Fatal("embedded key not recovered") }
+	if len(parseRedHerring(got, "https://survey.example.test/demo?__etk=EXAMPLE")) != 1 { t.Fatal("matching study key not loaded") }
+	if len(parseRedHerring(got, "https://survey.example.test/other")) != 0 { t.Fatal("key leaked to another study") }
+	binary.LittleEndian.PutUint64(data[len(data)-8:], 99999999)
+	if err := os.WriteFile(path, data, 0600); err != nil { t.Fatal(err) }
+	if readEmbeddedRedHerring(path) != nil { t.Fatal("invalid footer accepted") }
+}
 
 // repoRoot is the application root as it sits next to this package: src/ is the module,
 // config/ and data/ are one level up.
