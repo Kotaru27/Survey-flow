@@ -2782,8 +2782,12 @@ END_RUN:
 		// this profile instead of guessing it again.
 		replayable := replayablePairs(attemptPairs)
 		_, done := mem.noteAttempt(memFP, replayable, "completed")
-		mem.save()
-		if done {
+		saveErr := mem.save()
+		if saveErr != nil {
+			report.Errors = append(report.Errors, "could not save completed-run memory: "+saveErr.Error())
+			logLine(logFile, "Completed, but the study memory could not be saved: %v", saveErr)
+		}
+		if done && saveErr == nil {
 			report.Learned = append(report.Learned, fmt.Sprintf("remembered %d answer(s) that completed this survey", len(replayable)))
 			logLine(logFile, "Completed with %d unambiguous remembered selection(s) for this survey.", len(replayable))
 			if n := mem.avoidCount(memFP); n > 0 {

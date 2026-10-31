@@ -351,7 +351,15 @@ let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&
  // rule or validation. Dynamic/custom grids retain the one-row path.
  const gridCanBatch=!pageModel&&!redBoldInstructions.length&&!valErr.length;
  const gridLimit=gridCanBatch?8:1;
- let gridRow=0,gridCell=0,gridBatchSafe=true;const gridVerified=[];
+ let gridRow=0,gridCell=0,gridBatchSafe=true,gridInterrupted=false;const gridVerified=[];
+ const gridControlCount=()=>document.querySelectorAll('input,select,textarea,[role="radio"],[role="checkbox"],[role="option"]').length;
+ const gridInitialControls=gridControlCount();
+ const gridChanged=()=>{
+  if(gridControlCount()!==gridInitialControls||questions.some(x=>x.grid&&x.els.some(e=>e.isConnected===false))){window.__apRenderPending=true;gridInterrupted=true;return true}
+  if(!valErr.length&&readErrs().length){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-validation-appeared'});gridInterrupted=true;return true}
+  if(!gridVerified.every(isOn)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-answer-not-retained'});gridInterrupted=true;return true}
+  return false;
+ };
  if(radioQs.length){for(const q of radioQs){
    if(acted>=MAXACT)break;
    const g=q.els.filter(vis).filter(e=>!rhBlocked(e));if(!g.length)continue;
@@ -368,10 +376,10 @@ let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&
    const previous=q.grid?questions.filter(x=>x!==q&&x.grid&&x.owner==='radio'&&x.els.length===q.els.length).map(x=>x.els.findIndex(isOn)).filter(i=>i>=0).pop():pageModel?.kind==='auto_carousel_grid'?-1:undefined;
    if(chooseFromGroup(g,want,kind,qt,q.key,previous)){
     acts.push('radio');acted++;
-    if(q.grid){gridRow++;gridBatchSafe=gridBatchSafe&&g.every(e=>e.matches?.('input[type="radio"]'));const picked=g.find(isOn);if(picked)gridVerified.push(picked);await Promise.resolve();if(questions.some(x=>x.grid&&x.els.some(e=>e.isConnected===false))){window.__apRenderPending=true;break}if(!gridVerified.every(isOn)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-answer-not-retained'});break}}
+    if(q.grid){gridRow++;gridBatchSafe=gridBatchSafe&&g.every(e=>e.matches?.('input[type="radio"]'));const picked=g.find(isOn);if(picked)gridVerified.push(picked);await Promise.resolve();if(gridChanged())break}
    }else if(q.grid)break;
   }}
- let checkQs=dragOnly?[]:questions.filter(q=>q.owner==='check'&&!(ACC_SINGLE_CHOICE&&ACCORDIONS.length&&accSelected()>0)&&!questions.some(n=>n.exclusiveNone&&qAnswered(n))&&!q.noGuess&&!rhSettled(q));
+ let checkQs=(dragOnly||gridInterrupted)?[]:questions.filter(q=>q.owner==='check'&&!(ACC_SINGLE_CHOICE&&ACCORDIONS.length&&accSelected()>0)&&!questions.some(n=>n.exclusiveNone&&qAnswered(n))&&!q.noGuess&&!rhSettled(q));
  if(checkQs.length&&acted<MAXACT){for(const q of checkQs){
    if(acted>=MAXACT)break;
    const g=q.els.filter(vis).filter(e=>!rhBlocked(e));if(!g.length)continue;
@@ -420,9 +428,9 @@ let n;
 let did=false;
    for(const e of usable.slice(0,n)){if(fireChoice(e)){selected.push(label(e));pairs.push({question:qk,option:qkey(label(e))});pickedTrail.push(qk+'\u0000'+qkey(label(e)));did=true}}
    if(did){acts.push('checkbox');acted++}
-   if(q.grid&&did){gridCell++;gridBatchSafe=gridBatchSafe&&g.every(e=>e.matches?.('input[type="checkbox"]'));gridVerified.push(...g.filter(isOn));await Promise.resolve();if(questions.some(x=>x.grid&&x.els.some(e=>e.isConnected===false))){window.__apRenderPending=true;break}if(!gridVerified.every(isOn)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-answer-not-retained'});break}}
+   if(q.grid&&did){gridCell++;gridBatchSafe=gridBatchSafe&&g.every(e=>e.matches?.('input[type="checkbox"]'));gridVerified.push(...g.filter(isOn));await Promise.resolve();if(gridChanged())break}
   }}
- if(acted<MAXACT&&!dragOnly){for(const q of questions.filter(x=>x.owner==='custom')){
+ if(acted<MAXACT&&!dragOnly&&!gridInterrupted){for(const q of questions.filter(x=>x.owner==='custom')){
   if(acted>=MAXACT)break;
   const g=q.els.filter(vis).filter(e=>!rhBlocked(e));
   if(!g.length)continue;
@@ -445,7 +453,7 @@ let did=false;
   const want=usePersona?(kind==='gender'?P.Gender:kind==='yesno'?P.YesNo:kind==='city'?P.City:''):'';
   if(chooseFromGroup(usable,want,kind,qt,qk)){acts.push('custom-choice');acted++}
  }}
- if(acted<MAXACT&&!dragOnly){for(const q of questions.filter(x=>x.owner==='select')){
+ if(acted<MAXACT&&!dragOnly&&!gridInterrupted){for(const q of questions.filter(x=>x.owner==='select')){
   if(acted>=MAXACT)break;
   const s=q.els[0];
   if(!s||s.tagName!=='SELECT'||!vis(s))continue;
@@ -492,7 +500,7 @@ let c=(qt+' '+questionText(s)).toLowerCase();
  }}
  // Native slider values have a browser default, which does not mean a user
  // answered the question. Move the slider and dispatch input/change explicitly.
- if(acted<MAXACT && !(pageModel&&pageModel.kind==='emo_resonance')){
+ if(acted<MAXACT && !gridInterrupted && !(pageModel&&pageModel.kind==='emo_resonance')){
   for(const rq of questions.filter(x=>x.owner==='range')){
    const el=rq.els[0];
    if(!el||!vis(el)||el.disabled||el.readOnly||qAnswered(rq))continue;
@@ -511,7 +519,7 @@ let c=(qt+' '+questionText(s)).toLowerCase();
  }
  // A sequential list owns the ordinary open-answer slots, but the reentry ID still
  // belongs to this block: it is the unique test ID, never one of the list's answers.
- if(acted<MAXACT){for(const q of questions.filter(x=>x.owner==='text'&&(!(pageModel&&pageModel.ownsText)||isReentryQ(x)))){
+ if(acted<MAXACT&&!gridInterrupted){for(const q of questions.filter(x=>x.owner==='text'&&(!(pageModel&&pageModel.ownsText)||isReentryQ(x)))){
   if(acted>=MAXACT)break;
 const e=q.els[0];if(!e||e.disabled||e.readOnly||!vis(e))continue;
   if(skipQ.has(q.key))continue;

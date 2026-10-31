@@ -37,4 +37,12 @@ with sync_playwright() as p:
  page.set_content(html(script="if(e.closest('.row').dataset.row==='0')queueMicrotask(()=>document.querySelector('[data-row=1]').remove())"));page.evaluate('delete window.__apNavIntent');d=page.evaluate(engine)
  assert page.locator('#next').get_attribute('data-clicked') is None,d
  print('PASS changing grid cannot submit early')
+ page.set_content(html(script="if(e.closest('.row').dataset.row==='0')queueMicrotask(()=>{let x=document.createElement('input');x.required=true;document.querySelector('.question').appendChild(x)})"));page.evaluate('delete window.__apNavIntent');d=page.evaluate(engine)
+ assert page.locator('input[required]').count()==1 and page.locator('#next').get_attribute('data-clicked') is None,d
+ assert 'render-waiting' in d['action'],d
+ print('PASS newly mounted required input blocks navigation')
+ page.set_content(html(script="if(e.closest('.row').dataset.row==='0')queueMicrotask(()=>{let x=document.createElement('div');x.className='error';x.textContent='Invalid selection';document.querySelector('.question').appendChild(x)})"));page.evaluate('delete window.__apNavIntent');d=page.evaluate(engine)
+ assert page.locator('.error').is_visible() and page.locator('#next').get_attribute('data-clicked') is None,d
+ assert d['instructions']['blocked']>0,d
+ print('PASS validation appearing during a grid batch blocks navigation')
  b.close()

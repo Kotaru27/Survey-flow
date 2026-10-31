@@ -2,7 +2,9 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
 const a=fs.readFileSync('src/engine/analyze.js','utf8'),d=fs.readFileSync('src/engine/adapters.js','utf8');
 const helper=a.slice(a.indexOf('function parseAgeRange('),a.indexOf('\n}',a.indexOf('function instructionTargets('))+2);
 const initial=d.slice(d.indexOf('  for(const q of questions){'),d.indexOf('\n   const distinct=',d.indexOf('  for(const q of questions){')));
-const select=d.slice(d.indexOf(" if(acted<MAXACT&&!dragOnly){for(const q of questions.filter(x=>x.owner==='select'))"),d.indexOf('\n // Native slider',d.indexOf(" if(acted<MAXACT&&!dragOnly){for(const q of questions.filter(x=>x.owner==='select'))")));
+const selectStart=d.indexOf(" if(acted<MAXACT&&!dragOnly&&!gridInterrupted){for(const q of questions.filter(x=>x.owner==='select'))");
+assert.ok(selectStart>=0,'select adapter was not found');
+const select=d.slice(selectStart,d.indexOf('\n // Native slider',selectStart));
 function state(instruction, labels, ageText='How old are you?', ages=['15','22','35','50'], type='single', avoids=[]){
  const controls=labels.map(name=>({name,checked:false,disabled:false,getAttribute(){return null}}));
  const q={key:'gender',type,owner:type==='multi'?'check':'radio',text:'Which identity?',els:controls};
@@ -13,7 +15,7 @@ function state(instruction, labels, ageText='How old are you?', ages=['15','22',
  const ctx={norm:x=>String(x??'').replace(/\s+/g,' ').trim(),attrBlob:()=>'',vis:()=>true,label:e=>e.name,ACCORDIONS:[],document:{querySelectorAll:()=>[]},generalSelectionInstruction:()=>false,
    questions:[q,aq],redBoldInstructions:[inst],redInstructionFor:x=>x===q?inst:null,rhLocalText:()=>'',rhRulesMatching:()=>[],rhRuleApplies:()=>false,
    INSTRUCTION_BLOCK:messages,RH_LOG:[],namedGroupRule:()=>null,fireChoice:e=>(e.checked=true),isOn:e=>!!e.checked,selected:[],pairs:[],pickedTrail:[],acts:[],acted:0,MAXACT:45,qkey:x=>String(x).toLowerCase(),
-   completion:false,termination:false,dragOnly:false,selectAnswered:s=>s.selectedIndex>=0,reopen:new Set(),isAvoid:(_q,label)=>avoids.includes(label),exhausted:new Set(),questionText:()=>ageText,
+   completion:false,termination:false,dragOnly:false,gridInterrupted:false,selectAnswered:s=>s.selectedIndex>=0,reopen:new Set(),isAvoid:(_q,label)=>avoids.includes(label),exhausted:new Set(),questionText:()=>ageText,
    usePersona:true,P:{Age:35,Gender:'Male',Country:'Test'},preferredFor:()=>'',wouldRebuildBanned:()=>false,matchWant:(xs,w)=>xs.indexOf(w),rnd:()=>0,txt:o=>o.textContent,
    Event:class{constructor(n){this.type=n}}};
  vm.createContext(ctx);vm.runInContext(helper,ctx);vm.runInContext(initial+'\n }',ctx);vm.runInContext(select,ctx);
