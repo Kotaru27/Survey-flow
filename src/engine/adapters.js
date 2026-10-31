@@ -5,7 +5,7 @@ const MAXACT=45;
 let action='';
 const validationRecovery=(!completion&&!termination)?recoverValidatedChoice():{changed:false,reason:''};
 if(validationRecovery.changed){acts.push('validation-changed');acted++}
-else if(valErr.length&&!needMore){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:validationRecovery.reason,validation:valErr.slice(0,3)});}
+else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-alternative'||validationRecovery.reason==='validation-conflicts-with-instruction')){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:validationRecovery.reason,validation:valErr.slice(0,3)});}
  if(!completion&&!termination){
   for(const q of questions){
    if(q.noGuess)continue;
