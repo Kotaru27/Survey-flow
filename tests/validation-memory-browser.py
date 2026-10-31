@@ -81,6 +81,10 @@ with sync_playwright() as p:
  setpage(page,invalid.replace('type=checkbox checked','type=radio checked'));d=page.evaluate(script());assert page.locator('#comment').input_value()=='Example',d;assert not page.locator('#opt').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
  print('PASS negative validation clears a lone radio opt-out')
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ separate='''<div class=question><h3>Optional question</h3><label><input type=checkbox checked>Prefer not to answer</label></div><div class=question><h3>Another question</h3><textarea id=other></textarea></div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
+ setpage(page,separate);d=page.evaluate(script());assert page.get_by_label('Prefer not to answer').is_checked(),d;assert page.locator('#other').input_value(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
+ print('PASS unrelated question text does not cancel an opt-out')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
  summary='''<div class="question"><h3>Choose an item and provide details</h3><label><input type=radio name=item checked>Alpha</label><label>Details <input type=text id=detail oninput="document.querySelector('#local-error').hidden=true"></label><div class=error id=local-error>Please provide an answer.</div></div><div role=alert>One or more questions require further input.</div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
  setpage(page,summary);d=page.evaluate(script({'needOpen':True}));assert page.locator('#detail').input_value(),d;assert page.locator('#local-error').is_hidden(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
  d=page.evaluate(script({'needOpen':True}));assert page.locator('#next').get_attribute('data-count')=='1',d
