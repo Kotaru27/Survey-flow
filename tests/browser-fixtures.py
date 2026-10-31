@@ -53,6 +53,8 @@ with sync_playwright() as p:
   assert pg.locator('[data-choice]:checked').count()>=1,last
   assert pg.locator('#next').get_attribute('data-clicked')=='1',last
   assert last['instructions']['blocked']==0,last
+  (r/'test-evidence').mkdir(exist_ok=True)
+  pg.screenshot(path=str(r/'test-evidence'/'accordion-delayed-controls.png'))
  def structuredGroup(index,size):
   return f'''<section class="accordion-item"><button type="button" class="accordion-header" aria-controls="panel{index}" aria-expanded="false" onclick="openGroup({index},{size})">Group {index}</button><div class="panel" id="panel{index}" hidden></div></section>'''
  structuredScript='''<script>function openGroup(i,n){document.querySelectorAll('.panel').forEach(x=>x.hidden=true);document.querySelectorAll('.accordion-header').forEach(x=>x.setAttribute('aria-expanded','false'));let p=document.querySelector('#panel'+i), h=document.querySelector('[aria-controls=panel'+i+']');h.setAttribute('aria-expanded','true');p.hidden=false;if(!p.dataset.loaded){p.dataset.loaded='1';setTimeout(()=>{for(let j=0;j<n;j++){let l=document.createElement('label');l.innerHTML='<input type=checkbox name=items data-choice>Item '+i+'-'+j;p.appendChild(l)}},75)}}</script>'''
