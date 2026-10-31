@@ -28,6 +28,17 @@ with sync_playwright() as p:
  assert 'Yes' in chosen and 'No' in chosen,chosen
  assert page.locator('#next').get_attribute('data-clicked')=='1',result
  print('PASS auto-advancing carousel answered every card, mixed responses, then clicked page Next',chosen)
+ page.close();page=b.new_page()
+ longhtml=html.replace(''.join(slide(i) for i in range(4)),''.join(slide(i) for i in range(23)))
+ page.set_content(longhtml)
+ for _ in range(35):
+  result=page.evaluate(engine)
+  n=page.locator('[role=radio][aria-checked=true]').count()
+  if n<23: assert page.locator('#next').get_attribute('data-clicked') is None,result
+  if page.locator('#next').get_attribute('data-clicked')=='1': break
+ assert page.locator('[role=radio][aria-checked=true]').count()==23,result
+ assert page.locator('#next').get_attribute('data-clicked')=='1',result
+ print('PASS 23-card carousel answered all cards before page Next')
  seen=set()
  for trial in range(12):
   page.close();page=b.new_page()
