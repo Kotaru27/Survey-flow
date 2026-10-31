@@ -210,7 +210,8 @@ const rhOptions=(q,text)=>{
   if(!((e.matches&&e.matches('input[type=radio],input[type=checkbox]'))||/^(radio|checkbox|option)$/i.test(String(e.getAttribute&&e.getAttribute('role')||''))||/label/i.test(String(e.className||''))))continue;
   const id=rhIdentity({el:e});
   if(!id)continue;
-  const lab=norm(label(e)||txt(e)||'').trim();
+  const own=/^(radio|checkbox|option)$/i.test(String(e.getAttribute?.('role')||''))?norm(e.textContent||''):'';
+  const lab=norm(own||label(e)||txt(e)||'').trim();
   const code=String(e.value||'');
   const num=(String(e.id||'').match(/(\d+)\s*$/)||[])[1]||'';
   out.push({el:e,label:lab,code:code,num:num,id:id});
