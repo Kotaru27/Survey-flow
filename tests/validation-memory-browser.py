@@ -26,6 +26,14 @@ with sync_playwright() as p:
  setpage(page,minimum);d=page.evaluate(script());assert page.get_by_label('Alpha').is_checked() and page.get_by_label('Beta').is_checked(),d;assert page.locator('#result').inner_text()=='Accepted',d;assert page.locator('#next').get_attribute('data-count')=='1',d
  print('PASS minimum-count validation added a choice and continued on the same page')
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ summary='''<div class="question"><h3>Choose an item and provide details</h3><label><input type=radio name=item checked>Alpha</label><label>Details <input type=text id=detail oninput="document.querySelector('#local-error').hidden=true"></label><div class=error id=local-error>Please provide an answer.</div></div><div role=alert>One or more questions require further input.</div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
+ setpage(page,summary);d=page.evaluate(script({'needOpen':True}));assert page.locator('#detail').input_value(),d;assert page.locator('#local-error').is_hidden(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
+ d=page.evaluate(script({'needOpen':True}));assert page.locator('#next').get_attribute('data-count')=='1',d
+ print('PASS corrected field allows one retry with stale summary, but unchanged page is not retried')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ setpage(page,summary.replace("oninput=\"document.querySelector('#local-error').hidden=true\"",""));d=page.evaluate(script({'needOpen':True}));assert page.locator('#local-error').is_visible(),d;assert page.locator('#next').get_attribute('data-count') is None,d
+ print('PASS remaining specific validation prevents retry')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
  setpage(page,terminal);page.get_by_label('Alpha').check();d=page.evaluate(script());assert page.locator('#result').inner_text()=='Terminated after Alpha',d
  pairs=d.get('submittedPairs');assert len(pairs)==1 and pairs[0]['option']=='alpha',d;page.screenshot(path=str(OUT/'03-termination-first-run.png'))
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)

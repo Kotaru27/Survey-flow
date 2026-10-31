@@ -47,6 +47,16 @@ if(!next){const candidates=[...document.querySelectorAll('button,a,div,span,[tab
 let unanswered=0;
 const openQ=[];
 refreshCustom();
+// Some forms leave a page-wide error summary visible after the affected field
+// has been corrected. Permit one re-submission only in the same step as a
+// verified answer change, and only after every specific error has disappeared.
+// An unchanged or still-specific error remains blocked.
+const errorsAfterAnswers=readErrs();
+const summaryOnly=errorsAfterAnswers.every(e=>/^(?:one or more questions require further input|please correct the errors below)[.!]?$/i.test(norm(e)));
+if(valErr.length&&pairs.length&&summaryOnly){
+ INSTRUCTION_BLOCK.details=INSTRUCTION_BLOCK.details.filter(x=>x?.reason!=='unmatched-validation');
+ INSTRUCTION_BLOCK.count=INSTRUCTION_BLOCK.details.length;
+}
 if(!completion&&!termination){
  for(const x of questions){if(qOpen(x)){unanswered++;if(openQ.length<8)openQ.push(x.key.slice(0,120))}}
  // The model can see further than the visible questions: a carousel keeps its other
@@ -99,7 +109,7 @@ if(!completion&&!termination){
   action+=(action?'+':'')+'next-waiting';
  }
  else if(next){
-  if(INSTRUCTION_BLOCK.count===0&&accordion.pending===0&&unanswered===0&&(valErr.length===0||validationRecovery.changed||(needMore&&pairs.length>0))){
+  if(INSTRUCTION_BLOCK.count===0&&accordion.pending===0&&unanswered===0&&(valErr.length===0||validationRecovery.changed||(needMore&&pairs.length>0)||(pairs.length>0&&summaryOnly))){
    const before=navFingerprint();
    if(fire(next)){
     window.__apNavIntent={fp:before,at:Date.now()};
