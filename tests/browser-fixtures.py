@@ -68,6 +68,15 @@ with sync_playwright() as p:
   assert pg.locator('#next').get_attribute('data-clicked')=='1',d
  sameGroup=lambda label: f'''<div><div class="group-title" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden">Group</div><div class="panel" hidden>{checkbox(label,'shared')}</div></div>'''
  run('accordion-repeated-headings-separate-groups',pageWrap('<p>Choose two items</p>'+sameGroup('Alpha')+sameGroup('Beta')),duplicateHeaders)
+ def groupInstruction(pg):
+  last=None
+  for _ in range(12):
+   last=step(pg)
+   if pg.locator('#next').get_attribute('data-clicked')=='1':break
+  assert pg.get_by_label('Trowel').is_checked(),last
+  assert not pg.get_by_label('Paint').is_checked(),last
+  assert pg.locator('#next').get_attribute('data-clicked')=='1',last
+ run('accordion-named-group-minimum',pageWrap('<strong class="red">Must select atleast 1 GARDEN SUPPLIES</strong>'+accordion('Paint supplies',checkbox('Paint'))+accordion('Garden Supplies',checkbox('Trowel'))+radio('None of the above','none')),groupInstruction)
  def redPosition(pg):
   d=step(pg); print('red position',d['action'],d.get('redHerring'),d.get('instructions'))
   assert pg.locator('input:checked').count()==1

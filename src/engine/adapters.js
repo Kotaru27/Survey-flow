@@ -3,6 +3,17 @@ const acts=[];
 let acted=0;
 const MAXACT=45;
 let action='';
+// Resolve a named group only when the page exposes a unique matching panel.
+// Comparisons ignore spacing and punctuation, not the group identity.
+const groupKey=s=>String(s||'').toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+function namedGroupRule(instruction){
+ const text=norm(instruction?.text||'');
+ const m=text.match(/^(?:please\s+|must\s+)*(?:select|choose|pick|tick|check|mark)\s+(?:at\s*least)\s+(\d{1,2})\s+(.+?)[.!]?$/i);
+ if(!m||!ACCORDIONS.length)return null;
+ const name=groupKey(m[2]),matches=ACCORDIONS.filter(a=>groupKey(a.label)===name);
+ if(!name||matches.length!==1)return null;
+ return {panel:matches[0].panel,min:Number(m[1])};
+}
 const validationRecovery=(!completion&&!termination)?recoverValidatedChoice():{changed:false,reason:''};
 if(validationRecovery.changed){acts.push('validation-changed');acted++}
 else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-alternative'||validationRecovery.reason==='validation-conflicts-with-instruction')){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:validationRecovery.reason,validation:valErr.slice(0,3)});}
@@ -15,6 +26,19 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
    // A colored instruction applies only to its own question. Never apply a single
    // red sentence to every radio group on a multi-question page.
    const instruction=redInstructionFor(q);
+   const groupRule=namedGroupRule(instruction);
+   if(groupRule&&groupRule.panel){
+    const members=q.els.filter(e=>groupRule.panel.contains(e));
+    if(!members.length){q.noGuess=true;skipQ.add(q.key);continue}
+    q.noGuess=true;
+    const active=members.filter(e=>vis(e)&&!e.disabled);
+    const already=members.filter(isOn).length;
+    const available=active.filter(e=>!isOn(e)&&!isAvoid(q.key,label(e)));
+    const need=Math.max(0,groupRule.min-already);
+    if(need>available.length){if(accordion.pending===0){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'group-selection-unavailable',question:q.key})}continue}
+    for(const e of available.slice(0,need)){if(fireChoice(e)&&isOn(e)){const name=label(e);selected.push(name);pairs.push({question:q.key,option:qkey(name)});pickedTrail.push(qkey(q.key)+'\u0000'+qkey(name));acted++}else{INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'group-selection-unverified',question:q.key})}}
+    acts.push('instruction-group');continue;
+   }
    let instructionForChoice=instruction;
    if(instruction&&parseAgeRange(instruction.text)){
     const ageQs=questions.filter(x=>(x.owner==='select'||x.owner==='text')&&ageQuestion(x));

@@ -12,7 +12,7 @@ function state(instruction, labels, ageText='How old are you?', ages=['15','22',
  const messages={count:0,details:[]};const inst={text:instruction};
  const ctx={norm:x=>String(x??'').replace(/\s+/g,' ').trim(),attrBlob:()=>'',vis:()=>true,label:e=>e.name,ACCORDIONS:[],document:{querySelectorAll:()=>[]},generalSelectionInstruction:()=>false,
    questions:[q,aq],redBoldInstructions:[inst],redInstructionFor:x=>x===q?inst:null,rhLocalText:()=>'',rhRulesMatching:()=>[],rhRuleApplies:()=>false,
-   INSTRUCTION_BLOCK:messages,RH_LOG:[],fireChoice:e=>(e.checked=true),isOn:e=>!!e.checked,selected:[],pairs:[],pickedTrail:[],acts:[],acted:0,MAXACT:45,qkey:x=>String(x).toLowerCase(),
+   INSTRUCTION_BLOCK:messages,RH_LOG:[],namedGroupRule:()=>null,fireChoice:e=>(e.checked=true),isOn:e=>!!e.checked,selected:[],pairs:[],pickedTrail:[],acts:[],acted:0,MAXACT:45,qkey:x=>String(x).toLowerCase(),
    completion:false,termination:false,dragOnly:false,selectAnswered:s=>s.selectedIndex>=0,reopen:new Set(),isAvoid:(_q,label)=>avoids.includes(label),exhausted:new Set(),questionText:()=>ageText,
    usePersona:true,P:{Age:35,Gender:'Male',Country:'Test'},preferredFor:()=>'',wouldRebuildBanned:()=>false,matchWant:(xs,w)=>xs.indexOf(w),rnd:()=>0,txt:o=>o.textContent,
    Event:class{constructor(n){this.type=n}}};

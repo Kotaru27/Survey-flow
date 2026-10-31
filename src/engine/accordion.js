@@ -63,15 +63,16 @@ const noneChecked=[...document.querySelectorAll('input[type="radio"],[role="radi
  const checked=accSelected();
  const exposed=ACCORDIONS.some(a=>a.expanded&&[...a.content].some(e=>vis(e)&&!e.checked&&e.getAttribute('aria-checked')!=='true'));
  const multi=ACCORDIONS.some(a=>[...a.content].some(e=>e.matches?.('input[type="checkbox"],[role="checkbox"]')))||/select all that apply|multiple answers|more than one/i.test(norm(document.body?.innerText||''));
- const wanted=ACC_SINGLE_CHOICE?1:multi?Math.max(1,Math.min(8,Number(P.MultiSelectCount)||1)):1;
+ let wanted=ACC_SINGLE_CHOICE?1:multi?Math.max(1,Math.min(8,Number(P.MultiSelectCount)||1)):1;
  const redText=norm([...document.querySelectorAll('strong,b,[style*="color"],.red,.instruction')].filter(e=>{try{return getComputedStyle(e).color&&/^(rgb\(2[0-5]\d|red|#f)/i.test(getComputedStyle(e).color)}catch{return false}}).map(e=>e.textContent||'').join(' ')).toLowerCase();
+ const requiredCount=redText.match(/\b(?:at\s*least)\s+(\d{1,2})\b/);if(requiredCount)wanted=Math.max(1,Number(requiredCount[1]));
  const list=[...document.querySelectorAll(ACC_OPTION)].filter(e=>ACCORDIONS.some(a=>a.panel?.contains(e)));
  const ordMatches=/\b(?:select|choose|pick|click|tick|mark|check)\b/i.test(redText)?[...redText.matchAll(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last)\b/g)].map(m=>m[1]):[];
  const positions={first:0,second:1,third:2,fourth:3,fifth:4,sixth:5,seventh:6,eighth:7,ninth:8,tenth:9};
  const ordinalOpts=ordMatches.map(x=>x==='last'?list[list.length-1]:list[positions[x]]).filter(Boolean);
  const targets=ACCORDIONS.filter(a=>{
   const names=[a.label,...[...a.content].map(e=>norm(label(e)||e.getAttribute('aria-label')||''))];
-  return ordinalOpts.some(e=>a.panel?.contains(e))||names.some(name=>name.length>3&&redText.includes(name.toLowerCase()));
+  return ordinalOpts.some(e=>a.panel?.contains(e))||names.some(name=>name.length>3&&redText.replace(/\s+/g,'').includes(name.toLowerCase().replace(/\s+/g,'')));
  });
 const allRedOptions=[...new Set([...ordinalOpts,...list.filter(e=>{
   const name=norm(label(e)||e.getAttribute('aria-label')||'').toLowerCase();
