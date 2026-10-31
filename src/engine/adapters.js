@@ -313,7 +313,7 @@ let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&
    const c=qt.toLowerCase();
    const kind=/gender|sex/.test(c)?'gender':/yes|no|agree|disagree|would you|have you|do you|did you/.test(c)?'yesno':/age|year/.test(c)?'age':/city|town|where do you go|which region|where do you live|county|\/state\b/.test(c)?'city':'middle';
    let want=usePersona?(kind==='gender'?P.Gender:kind==='age'?String(P.Age):kind==='city'?P.City:''):'';
-   const previous=q.grid?questions.filter(x=>x!==q&&x.grid&&x.owner==='radio'&&x.els.length===q.els.length).map(x=>x.els.findIndex(isOn)).filter(i=>i>=0).pop():undefined;
+   const previous=q.grid?questions.filter(x=>x!==q&&x.grid&&x.owner==='radio'&&x.els.length===q.els.length).map(x=>x.els.findIndex(isOn)).filter(i=>i>=0).pop():pageModel?.kind==='auto_carousel_grid'?-1:undefined;
    if(chooseFromGroup(g,want,kind,qt,q.key,previous)){acts.push('radio');acted++}
    if(q.grid)gridRow=true;
   }}
