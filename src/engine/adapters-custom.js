@@ -1,3 +1,43 @@
+// NPS template: each visible numeric row belongs to a hidden open question.
+// Inventory displayed choices, click one, and require observable selection state.
+// Never infer a stored answer from a click alone.
+if(!completion&&!termination){
+ const npsRoot=document.querySelector('#ISD');
+ const npsRows=npsRoot?[...npsRoot.querySelectorAll('.question')].filter(vis):[];
+ if(npsRoot&&vis(npsRoot)&&!npsRows.length){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'numeric-scale-not-rendered'});}
+ for(const row of npsRows){
+  if(!vis(row))continue;
+  const leaves=[...row.querySelectorAll('button,label,span,div,li,td,[role="radio"],[role="button"]')].filter(e=>vis(e)&&/^\d{1,2}$/.test(norm(e.textContent||''))&&![...e.children].some(c=>/^\d{1,2}$/.test(norm(c.textContent||''))));
+  const found=new Map();
+  for(const e of leaves){
+   const number=Number(norm(e.textContent));
+   let target=e.closest('button,label,li,td,[role="radio"],[role="button"],[data-value]')||e;
+   if(!row.contains(target))target=e;
+   if(!found.has(number))found.set(number,[]);
+   if(!found.get(number).includes(target))found.get(number).push(target);
+  }
+  const nums=[...found.keys()].sort((a,b)=>a-b);
+  if(nums.length<3||nums.length>21||nums.some((n,i)=>i>0&&n!==nums[i-1]+1)||nums.some(n=>found.get(n).length!==1)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'numeric-scale-options-ambiguous'});continue}
+  const choices=nums.map(n=>({n,el:found.get(n)[0]}));
+  const qkeyNps=qkey(stableQuestion(row)||'numeric scale');
+  const state=e=>{
+   const nodes=[e,...e.querySelectorAll('input,[aria-checked],[aria-pressed],[aria-selected]')];
+   return nodes.some(x=>x.checked===true||x.getAttribute('aria-checked')==='true'||x.getAttribute('aria-pressed')==='true'||x.getAttribute('aria-selected')==='true'||/(?:^|[\s_-])(?:selected|active|checked)(?:$|[\s_-])/i.test(String(x.className||'')));
+  };
+  const owner=row.closest('.cf-question,.question-container,fieldset,[data-question]')||npsRoot;
+  if(redBoldInstructions.some(i=>owner.contains(i.el)&&!generalSelectionInstruction(i.text))){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'numeric-scale-instruction-needs-review',question:qkeyNps});continue}
+  if(choices.some(c=>state(c.el))){window.__apRenderPending=false;continue}
+  const available=choices.filter(c=>!isAvoid(qkeyNps,String(c.n)));
+  if(!available.length){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'numeric-scale-no-safe-choice',question:qkeyNps});continue}
+  const chosen=available[rnd(available.length)],before=chosen.el.getAttribute('style')||'',beforeClass=String(chosen.el.className||'');
+  fire(chosen.el);
+  await new Promise(resolve=>setTimeout(resolve,80));
+  const styleChanged=(chosen.el.getAttribute('style')||'')!==before||String(chosen.el.className||'')!==beforeClass;
+  if(!state(chosen.el)&&!styleChanged){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'numeric-scale-selection-unverified',question:qkeyNps});continue}
+  window.__apRenderPending=false;
+  selected.push(String(chosen.n));pairs.push({question:qkeyNps,option:String(chosen.n)});pickedTrail.push(qkeyNps+'\u0000'+chosen.n);acts.push('numeric-scale');acted++;
+ }
+}
 // Custom adapters: the pages whose interaction is not a row of controls. They run off
 // the model dispatch.js chose, so a second open-text slot never receives a copy of the
 // first answer, the emo-resonance circle is actually dragged rather than clicked, and a

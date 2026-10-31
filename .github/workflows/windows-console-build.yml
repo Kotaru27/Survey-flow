@@ -29,6 +29,7 @@ jobs:
           python tests/multi-page-journey.py
           python tests/validation-memory-browser.py
           python tests/carousel-auto-browser.py
+          python tests/nps-browser.py
       - name: Upload browser test evidence
         if: always()
         uses: actions/upload-artifact@v4
