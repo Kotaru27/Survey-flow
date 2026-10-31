@@ -186,7 +186,7 @@ type MemoryStore struct {
 
 func studyMemoryPath(root, raw string) string {
 	fp := strings.TrimPrefix(memoryFingerprint(raw), "sha256:")
-	pid := "study"
+	pid := "study-" + fp
 	if u, err := url.Parse(raw); err == nil {
 		re := regexp.MustCompile(`(?i)p[0-9]{5,}`)
 		if m := re.FindString(u.Query().Get("sname")); m != "" {
@@ -194,6 +194,18 @@ func studyMemoryPath(root, raw string) string {
 		} else if m := re.FindString(u.Path); m != "" {
 			pid = strings.ToLower(m)
 		}
+	}
+	return filepath.Join(root, "Memory", pid+".json")
+}
+
+// Previous versions stored each link under data/PID/<pid>-<fingerprint>/.
+func previousStudyMemoryPath(root, raw string) string {
+	fp := strings.TrimPrefix(memoryFingerprint(raw), "sha256:")
+	pid := "study"
+	if u, err := url.Parse(raw); err == nil {
+		re := regexp.MustCompile(`(?i)p[0-9]{5,}`)
+		if m := re.FindString(u.Query().Get("sname")); m != "" { pid = strings.ToLower(m)
+		} else if m := re.FindString(u.Path); m != "" { pid = strings.ToLower(m) }
 	}
 	return filepath.Join(root, "data", "PID", pid+"-"+fp, "survey-success-memory.json")
 }
@@ -206,15 +218,17 @@ func openMemory(root string, study ...string) *MemoryStore {
 		var raw struct { Surveys map[string]*SurveyMemory `json:"surveys"` }
 		if err := json.Unmarshal(b, &raw); err != nil { s.readFailed = true
 		} else if raw.Surveys != nil { s.Surveys = raw.Surveys }
-	} else if !os.IsNotExist(err) { s.readFailed = true
-	} else if len(study) > 0 && study[0] != "" {
-		// Migrate only the exact study's fingerprint; never rewrite the old shared file.
-		legacy := filepath.Join(root, "data", "survey-success-memory.json")
-		if b, err := os.ReadFile(legacy); err == nil {
-			var raw struct { Surveys map[string]*SurveyMemory `json:"surveys"` }
-			if json.Unmarshal(b, &raw) == nil {
-				fp := memoryFingerprint(study[0])
-				if m := raw.Surveys[fp]; m != nil { s.Surveys[fp] = m }
+	} else if !os.IsNotExist(err) { s.readFailed = true }
+	if len(study)>0 && study[0]!="" && !s.readFailed {
+		// Import only this exact link; retain any other links already in the PID file.
+		fp:=memoryFingerprint(study[0])
+		if s.Surveys[fp]==nil {
+			for _,oldPath:=range []string{previousStudyMemoryPath(root,study[0]),filepath.Join(root,"data","survey-success-memory.json")} {
+				if b,err:=os.ReadFile(oldPath);err==nil {
+					var old struct{ Surveys map[string]*SurveyMemory `json:"surveys"` }
+					if json.Unmarshal(b,&old)!=nil { s.readFailed=true;break }
+					if old.Surveys[fp]!=nil { s.Surveys[fp]=old.Surveys[fp];break }
+				} else if !os.IsNotExist(err) { s.readFailed=true;break }
 			}
 		}
 	}

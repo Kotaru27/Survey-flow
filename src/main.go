@@ -1474,7 +1474,7 @@ func runConsole(root string, cfg AppConfig) {
 		return
 	}
 	mem := openMemory(root, u)
-	view.detail("Study memory", filepath.Dir(mem.path))
+	view.detail("Study memory", mem.path)
 	total := promptCompletes(in, logFile)
 	view.section("LIVE SESSION", "The current step updates in place; full events remain in the log.")
 	view.detail("Target", fmt.Sprintf("%d completed run(s)", total))

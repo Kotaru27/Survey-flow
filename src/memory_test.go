@@ -98,7 +98,7 @@ func TestMemoryPersistsBetweenRuns(t *testing.T) {
  if strings.Contains(string(b), "private-id") || strings.Contains(string(b), "token=private") { t.Fatal("memory retained private input or raw URL") }
 }
 
-func TestStudyMemoryUsesSeparatePIDFoldersAndMigratesMatchingLegacy(t *testing.T) {
+func TestStudyMemoryUsesPIDFilesAndMigratesMatchingLegacy(t *testing.T) {
  root := t.TempDir()
  a := "https://survey.example.test/x?study=alpha&sname=p123456789"
  b := "https://survey.example.test/x?study=beta&sname=p123456789"
@@ -111,13 +111,24 @@ func TestStudyMemoryUsesSeparatePIDFoldersAndMigratesMatchingLegacy(t *testing.T
  if len(one.avoidFor(fa)) != 1 || len(one.avoidFor(fb)) != 0 { t.Fatal("legacy migration was not scoped to the matching study") }
  if err := one.save(); err != nil { t.Fatal(err) }
  two := openMemory(root, b)
- if len(two.avoidFor(fb)) != 1 || len(two.avoidFor(fa)) != 0 { t.Fatal("second study loaded another study's memory") }
+ if len(two.avoidFor(fb)) != 1 || len(two.avoidFor(fa)) != 1 { t.Fatal("link-specific memory was not retained") }
  if err := two.save(); err != nil { t.Fatal(err) }
- if one.path == two.path || !strings.Contains(one.path, filepath.Join("PID", "p123456789-")) { t.Fatalf("unsafe study paths: %s / %s", one.path, two.path) }
+ if one.path != two.path || one.path != filepath.Join(root,"Memory","p123456789.json") { t.Fatalf("incorrect PID path: %s / %s", one.path, two.path) }
  if _, err := os.Stat(one.path); err != nil { t.Fatal(err) }
  if _, err := os.Stat(two.path); err != nil { t.Fatal(err) }
  if len(openMemory(root, a).avoidFor(fa)) != 1 { t.Fatal("scoped memory did not reload") }
+ if got:=openMemory(root,a).avoidFor(fb); len(got)!=1 || got[0].Question!="second" { t.Fatal("link keys were mixed") }
  if len(openMemory(root).avoidFor(fb)) != 1 { t.Fatal("legacy memory was changed") }
+}
+
+func TestPIDMemoryImportsPreviousPerLinkFile(t *testing.T) {
+ root:=t.TempDir();u:="https://survey.example.test/x?sname=p123456789";fp:=memoryFingerprint(u)
+ old:=&MemoryStore{path:previousStudyMemoryPath(root,u),Surveys:map[string]*SurveyMemory{}}
+ old.addAvoid(fp,"q","old","screenout-suspect");if err:=old.save();err!=nil { t.Fatal(err) }
+ newStore:=openMemory(root,u);if len(newStore.avoidFor(fp))!=1 { t.Fatal("previous memory not migrated") }
+ if err:=newStore.save();err!=nil { t.Fatal(err) }
+ if _,err:=os.Stat(old.path);err!=nil { t.Fatal("old memory was removed") }
+ if _,err:=os.Stat(filepath.Join(root,"Memory","p123456789.json"));err!=nil { t.Fatal(err) }
 }
 
 func TestMemoryFingerprintKeepsStableIdentity(t *testing.T) {

@@ -347,9 +347,11 @@ const rhSettled=q=>!!(q.noGuess||(q.els&&q.els.length&&(rhRuleFor(q)||rhRuleForC
 // surrounding accordion choices are still being discovered.
 const pendingAccordionExclusive=q=>!!(ACCORDIONS.length&&accQuestionRoot&&q.els.length&&q.els.every(e=>accQuestionRoot.contains(e)&&/^(?:none(?: of (?:the|these) (?:above|listed))?|not applicable)$/i.test(norm(label(e)))));
 let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&&!pendingAccordionExclusive(q)&&!q.noGuess&&!rhSettled(q));
- // One row of a matrix per step. A grid the survey re-reads after every click is answered
- // row by row, and Next belongs to the page: it is not pressed until the rows are done.
- let gridRow=false,gridCell=false;
+ // Process a small batch only for visible native grid controls without a red
+ // rule or validation. Dynamic/custom grids retain the one-row path.
+ const gridCanBatch=!pageModel&&!redBoldInstructions.length&&!valErr.length;
+ const gridLimit=gridCanBatch?8:1;
+ let gridRow=0,gridCell=0,gridBatchSafe=true;const gridVerified=[];
  if(radioQs.length){for(const q of radioQs){
    if(acted>=MAXACT)break;
    const g=q.els.filter(vis).filter(e=>!rhBlocked(e));if(!g.length)continue;
@@ -357,13 +359,17 @@ let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&
    const already=g.some(isOn);
    if(already&&!reopen.has(q.key)&&!g.some(e=>isOn(e)&&isAvoid(q.key,label(e))))continue;
    if(!g.some(e=>!isOn(e)&&!isAvoid(q.key,label(e)))){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'no-safe-alternative',question:q.key});continue}
-   if(q.grid&&gridRow)continue;
+   if(q.grid&&gridRow){
+    if(!gridBatchSafe||gridRow>=gridLimit||!g.every(e=>e.matches?.('input[type="radio"]')&&e.isConnected!==false)||!gridVerified.every(isOn)||readErrs().length)continue;
+   }
    const c=qt.toLowerCase();
    const kind=/gender|sex/.test(c)?'gender':/yes|no|agree|disagree|would you|have you|do you|did you/.test(c)?'yesno':/age|year/.test(c)?'age':/city|town|where do you go|which region|where do you live|county|\/state\b/.test(c)?'city':'middle';
    let want=usePersona?(kind==='gender'?P.Gender:kind==='age'?String(P.Age):kind==='city'?P.City:''):'';
    const previous=q.grid?questions.filter(x=>x!==q&&x.grid&&x.owner==='radio'&&x.els.length===q.els.length).map(x=>x.els.findIndex(isOn)).filter(i=>i>=0).pop():pageModel?.kind==='auto_carousel_grid'?-1:undefined;
-   if(chooseFromGroup(g,want,kind,qt,q.key,previous)){acts.push('radio');acted++}
-   if(q.grid)gridRow=true;
+   if(chooseFromGroup(g,want,kind,qt,q.key,previous)){
+    acts.push('radio');acted++;
+    if(q.grid){gridRow++;gridBatchSafe=gridBatchSafe&&g.every(e=>e.matches?.('input[type="radio"]'));const picked=g.find(isOn);if(picked)gridVerified.push(picked);await Promise.resolve();if(questions.some(x=>x.grid&&x.els.some(e=>e.isConnected===false))){window.__apRenderPending=true;break}if(!gridVerified.every(isOn)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-answer-not-retained'});break}}
+   }else if(q.grid)break;
   }}
  let checkQs=dragOnly?[]:questions.filter(q=>q.owner==='check'&&!(ACC_SINGLE_CHOICE&&ACCORDIONS.length&&accSelected()>0)&&!questions.some(n=>n.exclusiveNone&&qAnswered(n))&&!q.noGuess&&!rhSettled(q));
  if(checkQs.length&&acted<MAXACT){for(const q of checkQs){
@@ -373,7 +379,9 @@ let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&
    let prevOn=[];
    if(reopen.has(qk)){prevOn=g.filter(e=>!e.disabled&&isOn(e)).map(label);for(const e of g){if(!e.disabled&&isOn(e)){fire(e);unmarkSel(e)}}}
    if(g.some(e=>!e.disabled&&isOn(e))&&!needMore&&!accordionMore(q))continue;
-   if(q.grid&&gridCell)continue;
+   if(q.grid&&gridCell){
+    if(!gridBatchSafe||gridCell>=gridLimit||!g.every(e=>e.matches?.('input[type="checkbox"]')&&e.isConnected!==false)||!gridVerified.every(isOn)||readErrs().length)continue;
+   }
   const active=g.filter(e=>!e.disabled&&vis(e)&&!isOn(e));
   if(!active.length)continue;
 const context=qt.toLowerCase();
@@ -412,7 +420,7 @@ let n;
 let did=false;
    for(const e of usable.slice(0,n)){if(fireChoice(e)){selected.push(label(e));pairs.push({question:qk,option:qkey(label(e))});pickedTrail.push(qk+'\u0000'+qkey(label(e)));did=true}}
    if(did){acts.push('checkbox');acted++}
-   if(q.grid)gridCell=true;
+   if(q.grid&&did){gridCell++;gridBatchSafe=gridBatchSafe&&g.every(e=>e.matches?.('input[type="checkbox"]'));gridVerified.push(...g.filter(isOn));await Promise.resolve();if(questions.some(x=>x.grid&&x.els.some(e=>e.isConnected===false))){window.__apRenderPending=true;break}if(!gridVerified.every(isOn)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-answer-not-retained'});break}}
   }}
  if(acted<MAXACT&&!dragOnly){for(const q of questions.filter(x=>x.owner==='custom')){
   if(acted>=MAXACT)break;
