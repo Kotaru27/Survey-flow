@@ -1757,6 +1757,8 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 	// can never use up the retries a screen-out is entitled to.
 	pageLeaves := 0
 	var lastPairs []answerPair
+	var lastSubmitted []answerPair
+	lastSuspectRecorded := false
 	// runPairs is every selection this run submitted, across all of its attempts: it is
 	// the answer set kept on a screen-out or a validation and cleared on a completion.
 	var runPairs []answerPair
@@ -1782,9 +1784,18 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 	// blameEnd remembers selections under this survey so the next run does not repeat
 	// them. budget limits how many of them one call may add.
 	blameEnd := func(pairs []answerPair, reason string, budget int) {
-		// A terminal page or validation does not identify a causative answer.
-		// Keep diagnostics in the run report; do not persist an answer blacklist.
-		logLine(logFile, "Attempt ended (%s); no individual answer was blacklisted.", reason)
+		if reason != "screenout" || lastSuspectRecorded || len(lastSubmitted) != 1 { return }
+		p := lastSubmitted[0]
+		if ok, saveErr := mem.recordScreenoutSuspect(memFP, lastSubmitted, reason); ok {
+			lastSuspectRecorded = true
+			if saveErr != nil {
+				report.Errors = append(report.Errors, "could not save termination memory: "+saveErr.Error())
+				logLine(logFile, "Could not save termination memory: %v", saveErr)
+			} else {
+				report.Learned = append(report.Learned, fmt.Sprintf("termination suspect: %s = %s", p.Question, p.Option))
+				logLine(logFile, "Termination followed %q on %q; saved it as an unproven suspect for this survey.", p.Option, p.Question)
+			}
+		}
 	}
 
 	// leavePage is how the runner refuses to sit on a page. A page that will not take the
@@ -1818,6 +1829,8 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 		report.Errors = append(report.Errors, fmt.Sprintf("step %d: left the page (%s) instead of waiting on it; restarted with test ID %s", atStep, why, persona.ReentryID))
 		answeredInAttempt = 0
 		attemptPairs = []answerPair{}
+		lastSubmitted = nil
+		lastSuspectRecorded = false
 		attemptStart = atStep + 1
 		lastSignature = ""
 		repeatCount = 0
@@ -1914,7 +1927,7 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 			reopenList = append(reopenList, q)
 		}
 		mem.forURL(u)
-		avoidList := []AvoidRule{}
+		avoidList := mem.avoidFor(memFP)
 		memPayload := map[string]any{"avoid": avoidList, "reopen": reopenList, "forceNext": forceNext,
 			// What has already completed this survey, the answer sets that ended a run
 			// badly, how each known answer has scored, and which single question this
@@ -2210,6 +2223,7 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 		// Every selection this run submits is logged, so a completed run can clear the
 		// answers that worked while a screen-out or a validation keeps them remembered.
 		stepPairs := parsePairs(m["selectedPairs"])
+		if isNavAction(sr.Action) { lastSubmitted = parsePairs(m["submittedPairs"]) }
 		for _, p := range stepPairs {
 			runPairs = append(runPairs, p)
 			attemptPairs = append(attemptPairs, p)
@@ -2381,6 +2395,8 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 				report.Errors = append(report.Errors, fmt.Sprintf("step %d: screened out; retrying with test ID %s", step, persona.ReentryID))
 				answeredInAttempt = 0
 				attemptPairs = []answerPair{}
+				lastSubmitted = nil
+				lastSuspectRecorded = false
 				attemptStart = step + 1
 				lastSignature = ""
 				repeatCount = 0

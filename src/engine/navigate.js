@@ -99,7 +99,7 @@ if(!completion&&!termination){
   action+=(action?'+':'')+'next-waiting';
  }
  else if(next){
-  if(INSTRUCTION_BLOCK.count===0&&accordion.pending===0&&unanswered===0){
+  if(INSTRUCTION_BLOCK.count===0&&accordion.pending===0&&unanswered===0&&(valErr.length===0||validationRecovery.changed||(needMore&&pairs.length>0))){
    const before=navFingerprint();
    if(fire(next)){
     window.__apNavIntent={fp:before,at:Date.now()};
@@ -143,6 +143,18 @@ if(valErrAfter.length&&!completion&&!termination){
     html:e.outerHTML.slice(0,220)};
   });
 }
+// Record only an unambiguous single-choice page submitted immediately before
+// a termination. The outcome is a clue, not proof that the option caused it.
+const submittedPairs=[];
+if(/(?:^|\+)next(?:\+|$)/.test(action)){
+ const eligible=questions.filter(x=>(x.type==='single'&&!x.grid)||(x.type==='select'&&!x.els[0]?.multiple));
+ if(eligible.length===1){
+  const x=eligible[0];let chosen=[];
+  if(x.type==='select'){const el=x.els[0];if(selectAnswered(el))chosen=[txt(el.options[el.selectedIndex])];}
+  else chosen=x.els.filter(isOn).map(label).filter(Boolean);
+  if(chosen.length===1)submittedPairs.push({question:x.key,option:qkey(chosen[0])});
+ }
+}
 const signature=JSON.stringify({url:location.href,title:document.title,q:q.slice(0,900),body:bodyAfter.slice(0,1400)});
-return {signature,redHerring:RH_LOG,redHerringScan:RH_DIAG,selected,selectedPairs:pairs,unanswered,exhausted:[...exhausted],returningSession,terminal,answered,dragRequests,url:location.href,title:document.title,question:q.slice(0,1400),questionType:ACCORDIONS.length?'accordion':pageModel?pageModel.kind:(questions.some(x=>x.grid)?'matrix':new Set(questions.map(x=>x.type)).size>1?'mixed':questions[0]?.type||'unknown'),action,interaction,accordion:{count:accordion.count,pending:accordion.pending,selected:accordion.selected,action:accordion.action},instructions:{blocked:INSTRUCTION_BLOCK.count,details:INSTRUCTION_BLOCK.details},needsHuman:humanWall(),validation:valErrAfter,completion,termination,controls:{radios:nativeRadios.length,roleRadios:roleRadios.length,checkboxes:nativeChecks.length,roleCheckboxes:roleChecks.length,selects:selects.length,texts:textInputs.length,clickables:clickable.length},questions:questions.slice(0,40).map(x=>({key:x.key.slice(0,140),type:x.type,n:x.els.length,on:(x.type==='select'||x.type==='text')?(qAnswered(x)?1:0):x.els.filter(isOn).length,grid:!!x.grid})),openQuestions:openQ,probe,inventory,bodyPreview:body.slice(0,1200)};
+return {signature,submittedPairs,redHerring:RH_LOG,redHerringScan:RH_DIAG,selected,selectedPairs:pairs,unanswered,exhausted:[...exhausted],returningSession,terminal,answered,dragRequests,url:location.href,title:document.title,question:q.slice(0,1400),questionType:ACCORDIONS.length?'accordion':pageModel?pageModel.kind:(questions.some(x=>x.grid)?'matrix':new Set(questions.map(x=>x.type)).size>1?'mixed':questions[0]?.type||'unknown'),action,interaction,accordion:{count:accordion.count,pending:accordion.pending,selected:accordion.selected,action:accordion.action},instructions:{blocked:INSTRUCTION_BLOCK.count,details:INSTRUCTION_BLOCK.details},needsHuman:humanWall(),validation:valErrAfter,completion,termination,controls:{radios:nativeRadios.length,roleRadios:roleRadios.length,checkboxes:nativeChecks.length,roleCheckboxes:roleChecks.length,selects:selects.length,texts:textInputs.length,clickables:clickable.length},questions:questions.slice(0,40).map(x=>({key:x.key.slice(0,140),type:x.type,n:x.els.length,on:(x.type==='select'||x.type==='text')?(qAnswered(x)?1:0):x.els.filter(isOn).length,grid:!!x.grid})),openQuestions:openQ,probe,inventory,bodyPreview:body.slice(0,1200)};
 })()

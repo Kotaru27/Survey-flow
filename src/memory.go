@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"hash/fnv"
 	"net/url"
 	"os"
@@ -193,32 +194,36 @@ func openMemory(root string) *MemoryStore {
 }
 
 // Save only confirmed successes. A corrupt/unreadable prior file is never overwritten.
-func (s *MemoryStore) save() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.readFailed { return }
-	clean := map[string]*SurveyMemory{}
-	for key, m := range s.Surveys {
-		if m == nil || m.Completed < 1 { continue }
-		good := map[string]*KnownGood{}
-		for q, g := range m.Good {
-			if g != nil && g.Wins > 0 && g.Best != "" && !strings.HasPrefix(q, "text|") {
-				good[q] = &KnownGood{Option:g.Best, Best:g.Best, Wins:g.Wins}
-			}
-		}
-		clean[key] = &SurveyMemory{Key:key, Updated:m.Updated, Completed:m.Completed, Good:good}
-	}
-	if len(clean)==0 { return }
-	b, err := json.MarshalIndent(struct{Surveys map[string]*SurveyMemory `json:"surveys"`}{clean}, "", "  ")
-	if err != nil || os.MkdirAll(filepath.Dir(s.path), 0700) != nil { return }
-	f, err := os.CreateTemp(filepath.Dir(s.path), ".survey-memory-*")
-	if err != nil { return }
-	name := f.Name()
-	defer os.Remove(name)
-	if _, err = f.Write(b); err != nil { f.Close(); return }
-	if err = f.Sync(); err != nil { f.Close(); return }
-	if err = f.Close(); err != nil { return }
-	_ = os.Rename(name, s.path)
+func (s *MemoryStore) save() error {
+ s.mu.Lock()
+ defer s.mu.Unlock()
+ if s.readFailed { return errors.New("existing survey memory could not be read; not overwriting it") }
+ clean := map[string]*SurveyMemory{}
+ for key, m := range s.Surveys {
+  if m == nil { continue }
+  good := map[string]*KnownGood{}
+  for q, g := range m.Good {
+   if g != nil && g.Wins > 0 && g.Best != "" && !strings.HasPrefix(q, "text|") {
+    good[q] = &KnownGood{Option:g.Best, Best:g.Best, Wins:g.Wins}
+   }
+  }
+  avoid := []AvoidRule{}
+  for _, rule := range m.Avoid { if rule.Reason == "screenout-suspect" { avoid = append(avoid, rule) } }
+  if m.Completed < 1 && len(avoid) == 0 { continue }
+  clean[key] = &SurveyMemory{Key:key, Updated:m.Updated, Completed:m.Completed, Good:good, Avoid:avoid}
+ }
+ if len(clean)==0 { return nil }
+ b, err := json.MarshalIndent(struct{Surveys map[string]*SurveyMemory `json:"surveys"`}{clean}, "", "  ")
+ if err != nil { return err }
+ if err = os.MkdirAll(filepath.Dir(s.path), 0700); err != nil { return err }
+ f, err := os.CreateTemp(filepath.Dir(s.path), ".survey-memory-*")
+ if err != nil { return err }
+ name := f.Name()
+ defer os.Remove(name)
+ if _, err = f.Write(b); err != nil { f.Close(); return err }
+ if err = f.Sync(); err != nil { f.Close(); return err }
+ if err = f.Close(); err != nil { return err }
+ return os.Rename(name, s.path)
 }
 
 // memoryFingerprint is intentionally conservative: two test links must not share
@@ -265,6 +270,28 @@ func (s *MemoryStore) avoidCount(fp string) int {
 		return len(m.Avoid)
 	}
 	return 0
+}
+
+// avoidFor returns a copy of termination suspects for this survey only.
+func (s *MemoryStore) avoidFor(fp string) []AvoidRule {
+ s.mu.Lock()
+ defer s.mu.Unlock()
+ m := s.Surveys[fp]
+ if m == nil { return []AvoidRule{} }
+ out := []AvoidRule{}
+ for _, r := range m.Avoid { if r.Reason == "screenout-suspect" { out = append(out,r) } }
+ return out
+}
+
+// A screenout identifies the last unambiguous submitted choice as a suspect,
+// not a proven cause. Quotas and ambiguous pages never create a rule.
+func (s *MemoryStore) recordScreenoutSuspect(fp string, pairs []answerPair, reason string) (bool, error) {
+ if reason != "screenout" || len(pairs) != 1 { return false,nil }
+ p := pairs[0]
+ if strings.HasPrefix(strings.ToLower(p.Question), "text|") { return false,nil }
+ ok,_ := s.addAvoid(fp,p.Question,p.Option,"screenout-suspect")
+ if !ok { return false,nil }
+ return true,s.save()
 }
 
 // trimRule guards the rule key without ever rewriting it: the engine matches on the exact
@@ -330,7 +357,7 @@ func (s *MemoryStore) addAvoid(fp, question, option, reason string) (ok, isNew b
 // selections have to survive every cleanup and stay avoided in the next response.
 func terminalReason(reason string) bool {
 	switch strings.ToLower(strings.TrimSpace(reason)) {
-	case "screenout", "quota", "termination":
+	case "screenout", "quota", "termination", "screenout-suspect":
 		return true
 	}
 	return false

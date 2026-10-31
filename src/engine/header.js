@@ -483,8 +483,8 @@ const rhTrap=(rule,opts)=>{
 const qkey=s=>((s||'').replace(/[ \t\n\r]+/g,' ').toLowerCase().slice(0,240)).trim();
 const qpre=s=>qkey(s).slice(0,160);
 const avoidRules=Array.isArray(MEM&&MEM.avoid)?MEM.avoid:[];
-const avoidExact=new Set(),avoidPrefix=new Set();
-for(const a of avoidRules){const k=qkey(a&&a.question),o=qkey(a&&a.option);if(!k||!o)continue;avoidExact.add(k+'||'+o);avoidPrefix.add(k.slice(0,160)+'||'+o)}
+const avoidExact=new Set();
+for(const a of avoidRules){const k=qkey(a&&a.question),o=qkey(a&&a.option);if(k&&o)avoidExact.add(k+'||'+o)}
 const reopen=new Set((Array.isArray(MEM&&MEM.reopen)?MEM.reopen:[]).map(qkey));
 // What has already completed this survey: those answers are tried first, unless the
 // store has since learned to avoid them.
@@ -550,7 +550,7 @@ function wouldRebuildBanned(q,o){
 }
 const exhausted=new Set();
 const forceNext=!!(MEM&&MEM.forceNext);
-function isAvoid(q,o){const k=qkey(q),op=qkey(o);if(!op)return false;if(avoidExact.has(k+'||'+op))return true;return avoidPrefix.has(k.slice(0,160)+'||'+op)}
+function isAvoid(q,o){const k=qkey(q),op=qkey(o);if(!op)return false;return avoidExact.has(k+'||'+op)}
 const vis=e=>{if(!e||e.disabled)return false;try{
  const shown=x=>{const r=x.getBoundingClientRect(),s=getComputedStyle(x);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)!==0};
  if(shown(e))return true;

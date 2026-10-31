@@ -27,6 +27,14 @@ jobs:
           python tests/browser-fixtures.py
           python tests/recovery-repro.py
           python tests/multi-page-journey.py
+          python tests/validation-memory-browser.py
+      - name: Upload browser test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-memory-browser-evidence
+          path: test-evidence/*.png
+          if-no-files-found: ignore
   build-test:
     runs-on: windows-latest
     steps:

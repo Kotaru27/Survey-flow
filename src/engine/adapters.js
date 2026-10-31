@@ -3,8 +3,12 @@ const acts=[];
 let acted=0;
 const MAXACT=45;
 let action='';
+const validationRecovery=(!completion&&!termination)?recoverValidatedChoice():{changed:false,reason:''};
+if(validationRecovery.changed){acts.push('validation-changed');acted++}
+else if(valErr.length&&!needMore){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:validationRecovery.reason,validation:valErr.slice(0,3)});}
  if(!completion&&!termination){
   for(const q of questions){
+   if(q.noGuess)continue;
    if(q.owner==='text'||q.owner==='select')continue;
    const qtext=rhLocalText(q);
    const localHits=rhRulesMatching(qtext).filter(r=>rhRuleApplies(r,qtext));
@@ -48,7 +52,15 @@ let action='';
     if(!ok||usable.filter(isOn).length<countRule.min||usable.filter(isOn).length>countRule.max){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'selection-count-unverified',question:q.key})}
     q.noGuess=true;acts.push('instruction-count');continue;
    }
-   const desired=instructionForChoice?instructionTargets(q,instructionForChoice):null;
+   let desired=instructionForChoice?instructionTargets(q,instructionForChoice):null;
+   if(desired?.targets?.some(e=>isAvoid(q.key,label(e)))){
+    if(q.type==='single'&&/^label-alternative/.test(desired.reason)){
+     desired=instructionTargets({...q,els:q.els.filter(e=>!isAvoid(q.key,label(e)))},instructionForChoice);
+    }
+    if(!desired?.targets?.length||desired.targets.some(e=>isAvoid(q.key,label(e)))){
+     q.noGuess=true;INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'instruction-conflicts-with-termination-memory',question:q.key,instruction:instruction.text});continue;
+    }
+   }
    // Generic selection wording is not a target-specific red attention check.
    // Let the normal question adapter select a response while retaining the
    // tighter guard for explicit or unrecognised answer directives.
@@ -240,7 +252,8 @@ let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&
    const g=q.els.filter(vis).filter(e=>!rhBlocked(e));if(!g.length)continue;
    const qt=q.text;
    const already=g.some(isOn);
-   if(already&&!reopen.has(q.key))continue;
+   if(already&&!reopen.has(q.key)&&!g.some(e=>isOn(e)&&isAvoid(q.key,label(e))))continue;
+   if(!g.some(e=>!isOn(e)&&!isAvoid(q.key,label(e)))){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'no-safe-alternative',question:q.key});continue}
    if(q.grid&&gridRow)continue;
    const c=qt.toLowerCase();
    const kind=/gender|sex/.test(c)?'gender':/yes|no|agree|disagree|would you|have you|do you|did you/.test(c)?'yesno':/age|year/.test(c)?'age':/city|town|where do you go|which region|where do you live|county|\/state\b/.test(c)?'city':'middle';
@@ -265,7 +278,7 @@ const context=qt.toLowerCase();
    const exclusive=e=>/^(none(?: of (?:the|these|above))?|not applicable|no one|nobody)$/i.test(norm(label(e)));
    let cand=active.slice();
   let usable=cand.filter(e=>!isAvoid(qk,label(e)));
-  if(!usable.length&&cand.length){usable=cand;exhausted.add(qk)}
+  if(!usable.length&&cand.length){exhausted.add(qk);INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'no-safe-alternative',question:qk});continue}
   // A remembered answer for this question leads the selection, so a survey that has
   // completed before is submitted the way it completed.
   const remembered=preferredFor(qk);
@@ -310,7 +323,7 @@ let did=false;
   if(reopen.has(qk)){prevOn=usable0.filter(e=>!e.disabled&&on(e)).map(label);for(const e of usable0){if(!e.disabled&&on(e)){fire(e);unmarkSel(e)}}}
   const active=usable0.filter(e=>!on(e));
   let usable=active.filter(e=>!isAvoid(qk,label(e)));
-  if(!usable.length&&active.length){usable=active;exhausted.add(qk)}
+  if(!usable.length&&active.length){exhausted.add(qk);INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'no-safe-alternative',question:qk});continue}
   if(prevOn.length){const diff=usable.filter(e=>prevOn.indexOf(label(e))<0);if(diff.length)usable=diff}
   if(!usable.length)continue;
   const context=qt.toLowerCase();
@@ -330,10 +343,10 @@ let did=false;
   if(ageRule?.error){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:ageRule.error,question:qk});continue}
   const ageValue=o=>/^\d{1,3}$/.test(norm(txt(o)))?Number(norm(txt(o))):NaN;
   if(ageRule?.range){opts=opts.filter(o=>{const n=ageValue(o);return Number.isFinite(n)&&n>=ageRule.range.min&&n<=ageRule.range.max});if(!opts.length){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'age-option-unavailable',question:qk});continue}}
-  if(have&&!reopen.has(qk)&&(!ageRule||opts.some(o=>o===s.options[s.selectedIndex])))continue;
+  if(have&&!reopen.has(qk)&&!isAvoid(qk,txt(s.options[s.selectedIndex]))&&(!ageRule||opts.some(o=>o===s.options[s.selectedIndex])))continue;
   const prevVal=have?String(s.value):'';
   let pool=opts.filter(o=>!isAvoid(qk,txt(o)));
-  if(!pool.length){pool=opts;exhausted.add(qk)}
+  if(!pool.length){exhausted.add(qk);INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'no-safe-alternative',question:qk});continue}
   if(prevVal&&reopen.has(qk)){const diff=pool.filter(o=>String(o.value)!==prevVal);if(diff.length)pool=diff}
  // A dropdown often carries no question text of its own - the field is named
  // "cq8010_input" and the sentence above it is the question - so the surrounding

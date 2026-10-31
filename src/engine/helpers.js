@@ -46,7 +46,7 @@ function chooseFromGroup(items,want,kind,qt,key){
   const k=key||qkey(qt||'');
   const active=items.filter(e=>!e.disabled&&vis(e)&&!(e.matches?.('input')&&e.checked)&&e.getAttribute?.('aria-checked')!=='true');if(!active.length)return false;
  let pool=active.filter(e=>!isAvoid(k,label(e)));
- if(!pool.length){pool=active;exhausted.add(k)}
+ if(!pool.length){exhausted.add(k);return false}
  const labels=pool.map(label);
  // Everything the store knows about this question narrows the field to its best
  // answers first: the profile that completed, the profile being replayed, and the

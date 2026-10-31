@@ -383,3 +383,38 @@ func TestReplayablePairsSkipsTextAndAmbiguousAnswers(t *testing.T) {
  got:=replayablePairs(p)
  if len(got)!=1 || got[0].Question!="q1" || got[0].Option!="yes" {t.Fatalf("unsafe replay pairs: %#v",got)}
 }
+
+func TestTerminationSuspectsPersistWithoutSuccessAndRemainSurveyScoped(t *testing.T) {
+ root := t.TempDir()
+ link := "https://survey.example.test/form?study=alpha"
+ first := openMemory(root)
+ fp := memoryFingerprint(link)
+ first.forURL(link)
+ if ok,_ := first.addAvoid(fp,"preference","choice a","screenout-suspect"); !ok { t.Fatal("suspect not stored") }
+ first.save()
+ second := openMemory(root)
+ got := second.avoidFor(fp)
+ if len(got)!=1 || got[0].Question!="preference" || got[0].Option!="choice a" {t.Fatalf("suspect not restored: %#v",got)}
+ if len(second.avoidFor(memoryFingerprint("https://survey.example.test/form?study=beta")))!=0 {t.Fatal("avoid rule leaked to another study")}
+}
+
+func TestQuotaAndUncertainValidationAreNotPersistedAsSuspects(t *testing.T) {
+ root:=t.TempDir()
+ first:=openMemory(root)
+ fp:=memoryFingerprint("https://survey.example.test/form?study=alpha")
+ first.addAvoid(fp,"a","x","quota")
+ first.addAvoid(fp,"b","y","validation")
+ first.save()
+ second:=openMemory(root)
+ if len(second.avoidFor(fp))!=0 {t.Fatal("non-termination outcomes were stored as suspects")}
+}
+
+func TestRecordTerminationSuspectPersistsAndSkipsQuotaOrAmbiguity(t *testing.T) {
+ root:=t.TempDir();s:=openMemory(root);fp:=memoryFingerprint("https://survey.example.test/one")
+ one:=[]answerPair{{Question:"product", Option:"alpha"}}
+ if ok,err:=s.recordScreenoutSuspect(fp,one,"quota");ok||err!=nil {t.Fatal("quota must not blacklist a choice")}
+ if ok,err:=s.recordScreenoutSuspect(fp,append(one,answerPair{Question:"q2",Option:"beta"}),"screenout");ok||err!=nil {t.Fatal("ambiguous pages must not blacklist a choice")}
+ if ok,err:=s.recordScreenoutSuspect(fp,one,"screenout");!ok||err!=nil {t.Fatalf("screenout did not save suspect: %v",err)}
+ reloaded:=openMemory(root);got:=reloaded.avoidFor(fp)
+ if len(got)!=1||got[0].Question!="product"||got[0].Option!="alpha" {t.Fatalf("bad persisted suspect: %#v",got)}
+}

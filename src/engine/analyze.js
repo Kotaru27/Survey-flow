@@ -373,3 +373,51 @@ function instructionTargets(q,instruction){
  if(direct)return {targets:[direct],reason:'exact-label'};
  return {targets:[],reason:'instruction-not-matched'};
 }
+
+// Recover only when a displayed validation identifies one rejected selection.
+// Unknown, conflicting or exhausted cases stay on the page for review.
+function recoverValidatedChoice(){
+ if(!valErr.length)return {changed:false,reason:''};
+ const message=norm(valErr.join(' ')).toLowerCase();
+ const selectedNow=[];
+ for(const q of questions){
+  if(q.owner==='radio'||q.owner==='check'){
+   for(const e of q.els.filter(isOn))selectedNow.push({q,el:e,name:norm(label(e))});
+  }else if(q.owner==='select'){
+   const e=q.els[0];if(e&&selectAnswered(e))selectedNow.push({q,el:e,name:norm(txt(e.options[e.selectedIndex]))});
+  }
+ }
+ const named=selectedNow.filter(x=>x.name.length>=3&&message.includes(x.name.toLowerCase()));
+ let hit=named.length===1?named[0]:null;
+ if(!hit&&named.length===0&&selectedNow.length===1&&!needMore&&/\b(?:invalid|not valid|not allowed|not accepted|unavailable|cannot|another answer|another option|another choice)\b/i.test(message))hit=selectedNow[0];
+ if(!hit)return {changed:false,reason:named.length>1?'ambiguous-validation':'unmatched-validation'};
+ const q=hit.q,inst=redInstructionFor(q);
+ if(inst&&!generalSelectionInstruction(inst.text))return {changed:false,reason:'validation-conflicts-with-instruction'};
+ const allLabels=q.owner==='select'?[...hit.el.options].map(txt):q.els.map(label);
+ const id=location.pathname+'|'+qkey(q.key)+'|'+allLabels.map(qkey).join('|');
+ const store=window.__apRejectedValidation||(window.__apRejectedValidation={});
+ const rejected=store[id]||(store[id]=[]);
+ if(!rejected.includes(qkey(hit.name)))rejected.push(qkey(hit.name));
+ let target=null,ok=false;
+ if(q.owner==='radio'||q.owner==='check'){
+  const available=q.els.filter(e=>vis(e)&&!e.disabled&&!isOn(e)&&!rejected.includes(qkey(label(e)))&&!isAvoid(q.key,label(e)));
+  if(!available.length)return {changed:false,reason:'validation-no-alternative'};
+  target=available[0];
+  if(q.owner==='check'){
+   fire(hit.el);unmarkSel(hit.el);
+   if(isOn(hit.el))return {changed:false,reason:'validation-uncheck-failed'};
+  }
+  ok=fireChoice(target)&&isOn(target)&&!isOn(hit.el);
+  if(ok){const name=norm(label(target));selected.push(name);pairs.push({question:q.key,option:qkey(name)});pickedTrail.push(qkey(q.key)+'\u0000'+qkey(name));}
+ }else if(q.owner==='select'){
+  const e=hit.el,old=String(e.value),rule=relatedAgeRule(q);
+  if(rule?.error)return {changed:false,reason:rule.error};
+  const possible=[...e.options].filter(o=>!o.disabled&&String(o.value||'')!==''&&!/^(?:please\s+)?(?:select|choose|pick)\b/i.test(norm(txt(o)))&&!rejected.includes(qkey(txt(o)))&&!isAvoid(q.key,txt(o))&&(!rule?.range||(/^\d{1,3}$/.test(norm(txt(o)))&&Number(txt(o))>=rule.range.min&&Number(txt(o))<=rule.range.max)));
+  if(!possible.length)return {changed:false,reason:'validation-no-alternative'};
+  target=possible[0];e.value=target.value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));
+  ok=String(e.value)!==old&&String(e.value)===String(target.value)&&selectAnswered(e);
+  if(ok){const name=norm(txt(target));selected.push(name);pairs.push({question:q.key,option:qkey(name)});pickedTrail.push(qkey(q.key)+'\u0000'+qkey(name));}
+ }
+ if(!ok)return {changed:false,reason:'validation-change-unverified'};
+ q.noGuess=true;return {changed:true,reason:'validation-answer-changed'};
+}
