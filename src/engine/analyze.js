@@ -387,6 +387,30 @@ function instructionTargets(q,instruction){
 // Unknown, conflicting or exhausted cases stay on the page for review.
 function recoverValidatedChoice(){
  if(!valErr.length)return {changed:false,reason:''};
+ // A displayed error can explicitly prohibit a selected opt-out after text was
+ // entered. Unlike replacing an invalid choice, this only needs a deselection.
+ const messageText=norm(valErr.join(' '));
+ if(/\b(?:do\s+not|don['’]?t|cannot|can['’]?t)\s+(?:select|choose|tick|check)\b/i.test(messageText)&&/\b(?:text|comment|response|answer|enter(?:ed|ing)?)\b/i.test(messageText)){
+  const hits=[];
+  for(const q of questions.filter(q=>q.owner==='check'||(q.owner==='radio'&&q.els.length===1)))for(const e of q.els.filter(isOn)){
+   const name=norm(label(e));
+   if(name.length>=3&&messageText.toLowerCase().includes(name.toLowerCase()))hits.push({q,e});
+  }
+  const filled=questions.filter(q=>q.owner==='text'&&q.els.some(e=>vis(e)&&String(e.value||'').trim()));
+  if(hits.length===1&&filled.length===1){
+   const {q,e}=hits[0],inst=redInstructionFor(q);
+   if(inst&&!generalSelectionInstruction(inst.text))return {changed:false,reason:'validation-conflicts-with-instruction'};
+   if(q.owner==='radio'&&e.matches?.('input[type="radio"]')){
+    const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'checked')?.set;
+    if(setter)setter.call(e,false);else e.checked=false;
+    e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));
+   }else fire(e);
+   unmarkSel(e);
+   if(isOn(e))return {changed:false,reason:'validation-uncheck-failed'};
+   q.noGuess=true;if(q.els.length===1)skipQ.add(q.key);
+   return {changed:true,reason:'validation-opt-out-cleared'};
+  }
+ }
  // Some validations state which answer is allowed rather than naming the
  // rejected one. Only act on an explicit positive command in a local error
  // belonging to exactly one single-choice group.

@@ -17,6 +17,34 @@ function namedGroupRule(instruction){
 const validationRecovery=(!completion&&!termination)?recoverValidatedChoice():{changed:false,reason:''};
 if(validationRecovery.changed){acts.push('validation-changed');acted++}
 else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-alternative'||validationRecovery.reason==='validation-conflicts-with-instruction')){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:validationRecovery.reason,validation:valErr.slice(0,3)});}
+// When an open response and a lone opt-out share the same question, they are
+// alternatives. Do not apply this to ordinary "Other, specify" combinations.
+const pairedOpen=new Set();
+const optOutLabel=/^(?:prefer not to (?:answer|say|respond)|(?:i\s+)?(?:do not|don't|dont)\s+(?:wish|want)\s+to\s+(?:answer|say|respond)|no comment)$/i;
+for(const tq of questions.filter(x=>x.owner==='text')){
+ const input=tq.els[0],owner=input?.closest?.('.cf-question,.question,.question-container,fieldset,[data-question]');
+ if(!owner||!vis(input))continue;
+ const texts=questions.filter(x=>x.owner==='text'&&x.els.some(e=>owner.contains(e)&&vis(e)));
+ const choices=questions.filter(x=>(x.owner==='check'||x.owner==='radio')&&x.els.length===1&&owner.contains(x.els[0])&&optOutLabel.test(norm(label(x.els[0]))));
+ if(texts.length!==1||choices.length!==1)continue;
+ const cq=choices[0],choice=cq.els[0],instruction=redInstructionFor(cq);
+ if(instruction&&!generalSelectionInstruction(instruction.text))continue;
+ pairedOpen.add(tq.key);
+ if(isOn(choice)&&!String(input.value||'').trim()){
+  skipQ.add(tq.key);cq.noGuess=true;continue;
+ }
+ if(isOn(choice)&&String(input.value||'').trim()){
+  if(cq.owner==='radio'&&choice.matches?.('input[type="radio"]')){
+   const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'checked')?.set;
+   if(setter)setter.call(choice,false);else choice.checked=false;
+   choice.dispatchEvent(new Event('input',{bubbles:true}));choice.dispatchEvent(new Event('change',{bubbles:true}));
+  }else fire(choice);
+  unmarkSel(choice);
+  if(isOn(choice)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'open-choice-uncheck-failed',question:cq.key});continue}
+  acts.push('open-choice-cleared');acted++;
+ }
+ cq.noGuess=true;skipQ.add(cq.key);
+}
  if(!completion&&!termination){
   for(const q of questions){
    if(q.noGuess)continue;
@@ -478,6 +506,7 @@ let c=(qt+' '+questionText(s)).toLowerCase();
  if(acted<MAXACT){for(const q of questions.filter(x=>x.owner==='text'&&(!(pageModel&&pageModel.ownsText)||isReentryQ(x)))){
   if(acted>=MAXACT)break;
 const e=q.els[0];if(!e||e.disabled||e.readOnly||!vis(e))continue;
+  if(skipQ.has(q.key))continue;
    const qt=q.text,qk=q.key;
   const checkText=rhLocalText(q),checkRule=rhRuleFor(q,checkText);
   if(checkRule?.kind==='text'){
@@ -505,7 +534,7 @@ const e=q.els[0];if(!e||e.disabled||e.readOnly||!vis(e))continue;
    const box=(e.closest?e.closest('.cf-question,.question,.question-container,fieldset,[role="group"],[data-question]'):null)||e.parentElement;
    const combo=!!(box&&box.querySelector('input[type="radio"],input[type="checkbox"],select,[role="radio"],[role="checkbox"]'));
    const required=!!(e.required||e.getAttribute('aria-required')==='true'||e.getAttribute('aria-required')==='true');
-   if(combo&&!required&&!fieldIsId&&!(MEM&&MEM.needOpen)){skipQ.add(qk);continue}
+   if(combo&&!required&&!fieldIsId&&!(MEM&&MEM.needOpen)&&!pairedOpen.has(qk)){skipQ.add(qk);continue}
   const isId=fieldIsId&&hasId;
   let v=isId?P.ReentryID:/age|year/.test(c)?String(P.Age):/country|nationality/.test(c)?P.Country:/email/.test(c)?'test.respondent@example.invalid':/phone|mobile/.test(c)?'9999999999':P.OpenText;
   if(ageRule?.range){const n=Number(P.Age);v=String(Math.max(ageRule.range.min,Math.min(ageRule.range.max,Number.isFinite(n)?n:ageRule.range.min)))}
