@@ -39,6 +39,26 @@ with sync_playwright() as p:
  assert page.locator('[role=radio][aria-checked=true]').count()==23,result
  assert page.locator('#next').get_attribute('data-clicked')=='1',result
  print('PASS 23-card carousel answered all cards before page Next')
+ page.close();page=b.new_page()
+ combined=longhtml.replace('we need to select mix of yes and no','we need to select mix of yes and no . Dont select all NO')
+ page.set_content(combined)
+ for _ in range(35):
+  result=page.evaluate(engine)
+  n=page.locator('[role=radio][aria-checked=true]').count()
+  if n<23: assert page.locator('#next').get_attribute('data-clicked') is None,result
+  if page.locator('#next').get_attribute('data-clicked')=='1': break
+ choices=page.locator('[role=radio][aria-checked=true]').all_text_contents()
+ assert len(choices)==23 and set(choices)=={'Yes','No'},result
+ assert page.locator('#next').get_attribute('data-clicked')=='1',result
+ print('PASS combined mix and not-all-no instruction across 23 cards')
+ for extra in ['. Select only Yes','. Do not select No']:
+  page.close();page=b.new_page()
+  page.set_content(html.replace('we need to select mix of yes and no','we need to select mix of yes and no'+extra))
+  result=page.evaluate(engine)
+  assert page.locator('[role=radio][aria-checked=true]').count()==0,result
+  assert page.locator('#next').get_attribute('data-clicked') is None,result
+  assert result['instructions']['blocked']>0,result
+ print('PASS unrecognized conflicting mix instructions remain blocked')
  seen=set()
  for trial in range(12):
   page.close();page=b.new_page()

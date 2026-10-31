@@ -29,7 +29,9 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
    // A mix is a constraint over the carousel's cards, not a demand to select
    // both radio answers on one card. Derive counts from the survey's own
    // checked state so refreshes and existing answers remain authoritative.
-   const mixRule=instruction&&/^(?:(?:we\s+need\s+to|please|must)\s+)?(?:select|choose|pick)\s+(?:a\s+)?mix(?:ture)?\s+of\s+yes\s+and\s+no[.!]?$/i.test(norm(instruction.text));
+   // A redundant "do not select all yes/no" constraint is compatible with a
+   // mix. Reject other extra clauses rather than discarding instructions.
+   const mixRule=instruction&&/^(?:(?:we\s+need\s+to|please|must)\s+)?(?:select|choose|pick)\s+(?:a\s+)?mix(?:ture)?\s+of\s+yes\s+and\s+no\s*(?:[.!;]+\s*(?:do\s+not|don['’]?t)\s+(?:select|choose|pick)\s+all\s+(?:yes|no)\s*)?[.!]?$/i.test(norm(instruction.text));
    if(mixRule&&pageModel?.kind==='auto_carousel_grid'&&q.owner==='radio'){
     q.noGuess=true;
     const current=pageModel.slides.find(s=>s.getAttribute('aria-hidden')==='false'&&s.querySelector('[role="radio"],input[type="radio"]'));
