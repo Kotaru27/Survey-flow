@@ -53,6 +53,10 @@ with sync_playwright() as p:
  setpage(page,choice);d=page.evaluate(script({'redHerring':[{'contains':'Pick the synthetic key?','strict':True,'answer':'Alpha'}]}));assert page.get_by_label('Alpha').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
  print('PASS known choice check uses answer label with shuffled options')
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ instructed=choice.replace('<h3>Pick the synthetic key?</h3>','<h3>Pick the synthetic key?</h3><strong style="color:red">Please select the first answer</strong>')
+ setpage(page,instructed);d=page.evaluate(script({'redHerring':[{'contains':'Pick the synthetic key?','strict':True,'answer':'Alpha'}]}));assert page.get_by_label('Alpha').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
+ print('PASS known check uses keyed label despite changed option order')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
  setpage(page,choice);d=page.evaluate(script({'redHerring':[{'contains':'Pick the synthetic key?','strict':True,'answer':'Gamma'}]}));assert page.locator('input:checked').count()==0,d;assert page.locator('#next').get_attribute('data-count') is None,d
  print('PASS missing known answer does not fall back to guessing')
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)

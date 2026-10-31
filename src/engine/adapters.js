@@ -133,7 +133,7 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
    // Generic selection wording is not a target-specific red attention check.
    // Let the normal question adapter select a response while retaining the
    // tighter guard for explicit or unrecognised answer directives.
-   if(desired&&desired.reason!=='general-instruction'){
+   if(desired&&desired.reason!=='general-instruction'&&!localHits.some(r=>r.strict)){
     // An unrecognised red command must NEVER fall back to random radio/checkbox.
     if(!desired.targets.length){
      q.noGuess=true;INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:desired.reason,question:q.key.slice(0,140),instruction:instruction.text.slice(0,300),options:q.els.map(e=>norm(label(e)||e.getAttribute?.('aria-label')||'')).filter(Boolean).slice(0,12)});
