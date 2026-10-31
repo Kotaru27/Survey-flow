@@ -323,7 +323,7 @@ let did=false;
   const s=q.els[0];
   if(!s||s.tagName!=='SELECT'||!vis(s))continue;
   const qt=q.text,qk=q.key;
-  let opts=[...s.options].filter(o=>!o.disabled&&o.value!==''&&!/^(select|choose)/i.test(txt(o)));
+  let opts=[...s.options].filter(o=>!o.disabled&&String(o.value||'').trim()!==''&&!/^(?:please\s+)?(?:select|choose|pick)\b/i.test(norm(txt(o)))&&!/^(?:[-–—]+|\.{3,})$/.test(norm(txt(o))));
   if(!opts.length){skipQ.add(qk);continue}
   const have=selectAnswered(s);
   const ageRule=relatedAgeRule(q);
@@ -357,7 +357,7 @@ let c=(qt+' '+questionText(s)).toLowerCase();
   // A dropdown that ignores the value was never answered: recording it would put an
   // answer in the report that the survey does not hold, and the next step would answer
   // the same question again on top of it.
-  if(String(s.value)!==String(o.value)){
+  if(String(s.value)!==String(o.value)||!selectAnswered(s)){
    acts.push('select-stuck');acted++;
    continue;
   }
