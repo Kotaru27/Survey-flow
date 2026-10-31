@@ -30,11 +30,13 @@ with sync_playwright() as p:
  print('PASS auto-advancing carousel answered every card, mixed responses, then clicked page Next',chosen)
  seen=set()
  for trial in range(12):
+  page.close();page=b.new_page()
   page.set_content(html.replace('<font color="red">we need to select mix of yes and no</font>',''))
   for _ in range(8):
    result=page.evaluate(engine)
    if page.locator('#next').get_attribute('data-clicked')=='1':break
   assert page.locator('[role=radio][aria-checked=true]').count()==4,result
+  assert page.locator('#next').get_attribute('data-clicked')=='1',result
   seen.update(page.locator('[role=radio][aria-checked=true]').all_text_contents())
  assert seen=={'Yes','No'},seen
  print('PASS carousel without a mix instruction does not always use the persona choice',seen)

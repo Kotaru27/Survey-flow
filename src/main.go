@@ -2573,6 +2573,11 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 		}
 		stuck := sig != "" && repeatCount > 0
 		un := toInt(m["unanswered"])
+		modelAnswered := -1
+		if sr.Interaction != nil { modelAnswered = toInt(sr.Interaction["answered"]) }
+		if confirmedPageProgress(lastUnanswered, un, lastModelAnswered, modelAnswered) {
+			samePageSteps = 0
+		}
 		// The signature is the page text, and a page being worked through item by item
 		// keeps exactly the same text while it changes: a matrix answered one row at a
 		// time, a brand scale one brand at a time. Answering something, or leaving fewer
@@ -2893,6 +2898,12 @@ func fatalStatus(s string) bool {
 		return true
 	}
 	return false
+}
+
+// A card or row actually completed is progress even when the enclosing page's
+// visible text and URL remain unchanged. An unchanged count is not progress.
+func confirmedPageProgress(previousOpen, currentOpen, previousAnswered, currentAnswered int) bool {
+	return currentOpen < previousOpen || (previousAnswered >= 0 && currentAnswered > previousAnswered)
 }
 
 // runReportName gives every run its own file. The batch number is part of the name

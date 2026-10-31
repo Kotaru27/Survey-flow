@@ -64,3 +64,13 @@ func TestUnverifiedExitsAbortRetryLoop(t *testing.T) {
 		t.Fatal("render timeout too small")
 	}
 }
+
+func TestCarouselProgressDoesNotLookLikeAStall(t *testing.T) {
+	for i := 0; i < 24; i++ {
+		if !confirmedPageProgress(24-i, 23-i, i, i+1) {
+			t.Fatalf("card %d should count as progress", i)
+		}
+	}
+	if confirmedPageProgress(3, 3, 4, 4) { t.Fatal("unchanged state must not count as progress") }
+	if confirmedPageProgress(3, 4, 4, 4) { t.Fatal("increased unanswered count must not count as progress") }
+}
