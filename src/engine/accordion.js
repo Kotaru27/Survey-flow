@@ -7,7 +7,7 @@ const ACC_OPTION='input[type="checkbox"],input[type="radio"],[role="checkbox"],[
 // successive accordion questions and eventually clicked Next with all panels
 // closed. Fingerprint the prompt BEFORE the first accordion heading; option
 // content is excluded so lazy-loading choices cannot reset the fingerprint.
-const ACC_FIRST=document.querySelector('details > summary,[aria-expanded],.accordion-header,.accordion-trigger,[data-accordion-trigger]');
+const ACC_FIRST=document.querySelector('details > summary,[aria-expanded],.accordion-header,.accordion-trigger,[data-accordion-trigger],[class*=collapsing-panel__title],[class*=collapsible-group__title]');
 const ACC_ROOT=ACC_FIRST?.closest('.cf-question,.question,.question-container,fieldset,[data-question]');
 const ACC_HEAD=norm(document.querySelector('.question-title,.cf-question__title,[class*="question-title" i]')?.textContent||'');
 const ACC_PREFIX=ACC_ROOT&&ACC_FIRST?norm(String(ACC_ROOT.textContent||'').split(String(ACC_FIRST.textContent||''))[0]).slice(0,220):'';
@@ -16,11 +16,11 @@ const ACC_PAGE=location.href+'|'+String(ACC_ROOT?.id||ACC_ROOT?.getAttribute('da
 if(!window.__apAccordionState||window.__apAccordionState.page!==ACC_PAGE)window.__apAccordionState={page:ACC_PAGE,seen:{},attempts:{},awaiting:{}};
 const ACC_STATE=window.__apAccordionState;
 function accTriggerCandidates(){
- const selectors='details > summary,[aria-expanded],[class*="category-header" i],[class*="group-title" i],[class*="accordion-header" i],[class*="accordion-trigger" i],[class*="accordion-toggle" i],[class*="collapse-toggle" i],[class*="expand-toggle" i],[class*="expander" i],[class*="category-title" i],[class*="group-header" i],[data-accordion-trigger]';
+ const selectors='details > summary,[aria-expanded],[class*="category-header" i],[class*="group-title" i],[class*="accordion-header" i],[class*="accordion-trigger" i],[class*="accordion-toggle" i],[class*="collapse-toggle" i],[class*="expand-toggle" i],[class*="expander" i],[class*="category-title" i],[class*="group-header" i],[data-accordion-trigger],[class*=collapsing-panel__title],[class*=collapsible-group__title]';
  return [...new Set(document.querySelectorAll(selectors))].filter(e=>vis(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true');
 }
 function accModel(trigger,index){
- let item=trigger.closest('details,[class*="accordion-item" i],[data-accordion-item],[class*="collapsible" i],[role="treeitem"]');
+ let item=trigger.parentElement?.closest('details,[class*="accordion-item" i],[data-accordion-item],[class*="collapsible" i],[role="treeitem"]');
  let panel=null;
  const controlled=trigger.getAttribute('aria-controls');
  if(controlled)panel=document.getElementById(controlled);
@@ -31,13 +31,15 @@ function accModel(trigger,index){
    e.matches?.('[role="region"],[class*="panel" i],[class*="content" i],[class*="body" i]')||e.querySelector?.(ACC_OPTION)))||null;
  }
  if(!panel&&trigger.nextElementSibling)panel=trigger.nextElementSibling;
- const expanded=trigger.closest('details')?.open===true||trigger.getAttribute('aria-expanded')==='true'||trigger.getAttribute('data-state')==='open';
- const closed=trigger.closest('details')?.open===false||trigger.getAttribute('aria-expanded')==='false'||trigger.getAttribute('data-state')==='closed'||trigger.getAttribute('data-expanded')==='false';
+ const classOpen=!!item&&/\bcf-collapsing-panel--open\b/.test(String(item.className||''));
+ const classClosed=!!item&&/\bcf-collapsing-panel\b/.test(String(item.className||''))&&!classOpen;
+ const expanded=classOpen||trigger.closest('details')?.open===true||trigger.getAttribute('aria-expanded')==='true'||trigger.getAttribute('data-state')==='open';
+ const closed=classClosed||trigger.closest('details')?.open===false||trigger.getAttribute('aria-expanded')==='false'||trigger.getAttribute('data-state')==='closed'||trigger.getAttribute('data-expanded')==='false';
  const hiddenPanel=!!(panel&&(panel.hidden||panel.getAttribute('aria-hidden')==='true'||getComputedStyle(panel).display==='none'||getComputedStyle(panel).visibility==='hidden'));
  const content=panel?.querySelectorAll?.(ACC_OPTION)||[];
  // A generic expanded widget is not an accordion. Keep scope to actual choice groups,
  // explicit accordion structure, or a panel which holds choice controls.
- const structured=!!(controlled||trigger.closest('details,[class*="accordion" i],[class*="collapsible" i],[data-accordion-item]')||/accordion|collapse|expand|category-title|category-header|group-header|group-title/i.test(String(trigger.className||'')));
+ const structured=!!(controlled||trigger.closest('details,[class*="accordion" i],[class*="collapsible" i],[data-accordion-item]')||/accordion|collaps|expand|category-title|category-header|group-header|group-title/i.test(String(trigger.className||'')));
  const visuallyOpen=!!(panel&&content.length&&!hiddenPanel&&!closed);
  if(!structured||(!closed&&!expanded&&!hiddenPanel&&!visuallyOpen))return null;
  const label=norm(trigger.getAttribute('aria-label')||trigger.innerText||trigger.textContent||'').slice(0,140);
@@ -64,7 +66,7 @@ const noneChecked=[...document.querySelectorAll('input[type="radio"],[role="radi
  const exposed=ACCORDIONS.some(a=>a.expanded&&[...a.content].some(e=>vis(e)&&!e.checked&&e.getAttribute('aria-checked')!=='true'));
  const multi=ACCORDIONS.some(a=>[...a.content].some(e=>e.matches?.('input[type="checkbox"],[role="checkbox"]')))||/select all that apply|multiple answers|more than one/i.test(norm(document.body?.innerText||''));
  let wanted=ACC_SINGLE_CHOICE?1:multi?Math.max(1,Math.min(8,Number(P.MultiSelectCount)||1)):1;
- const redText=norm([...document.querySelectorAll('strong,b,[style*="color"],.red,.instruction')].filter(e=>{try{return getComputedStyle(e).color&&/^(rgb\(2[0-5]\d|red|#f)/i.test(getComputedStyle(e).color)}catch{return false}}).map(e=>e.textContent||'').join(' ')).toLowerCase();
+ const redText=norm([...document.querySelectorAll('strong,b,[style*="color"],.red,.instruction')].filter(e=>{try{return getComputedStyle(e).color&&/^(rgb\(2[0-5]\d|red|#f)/i.test(getComputedStyle(e).color)}catch{return false}}).map(e=>e.textContent||'').join(' ')).toLowerCase().replace(/\batleast\b/g,'at least');
  const requiredCount=redText.match(/\b(?:at\s*least)\s+(\d{1,2})\b/);if(requiredCount)wanted=Math.max(1,Number(requiredCount[1]));
  const list=[...document.querySelectorAll(ACC_OPTION)].filter(e=>ACCORDIONS.some(a=>a.panel?.contains(e)));
  const ordMatches=/\b(?:select|choose|pick|click|tick|mark|check)\b/i.test(redText)?[...redText.matchAll(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last)\b/g)].map(m=>m[1]):[];
@@ -93,7 +95,7 @@ const allRedOptions=[...new Set([...ordinalOpts,...list.filter(e=>{
  ACC_STATE.attempts[item.key]=(ACC_STATE.attempts[item.key]||0)+1;
  const before=item.trigger.getAttribute('aria-expanded');
  fire(item.trigger);
- const changed=item.trigger.closest('details')?.open===true||item.trigger.getAttribute('aria-expanded')==='true'||(item.panel&&!item.panel.hidden&&getComputedStyle(item.panel).display!=='none');
+ const changed=item.trigger.closest('details')?.open===true||item.trigger.getAttribute('aria-expanded')==='true'||(/\bcf-collapsing-panel--open\b/.test(String(item.item?.className||'')))||(!/\bcf-collapsing-panel\b/.test(String(item.item?.className||''))&&item.panel&&!item.panel.hidden&&getComputedStyle(item.panel).display!=='none');
  if(changed){ACC_STATE.seen[item.key]=true;if(!item.panel?.querySelector?.(ACC_OPTION+',[data-option],[data-answer],[data-value]'))ACC_STATE.awaiting[item.key]=true;return {action:'accordion-expand',pending:1,count:ACCORDIONS.length,selected:checked};}
  // Animation/framework updates may be asynchronous. Report the expansion attempt
  // and recheck on the next step instead of treating it as an answer.

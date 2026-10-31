@@ -7,7 +7,7 @@ let action='';
 // Comparisons ignore spacing and punctuation, not the group identity.
 const groupKey=s=>String(s||'').toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
 function namedGroupRule(instruction){
- const text=norm(instruction?.text||'');
+ const text=norm(instruction?.text||'').replace(/\batleast\b/ig,'at least');
  const m=text.match(/^(?:please\s+|must\s+)*(?:select|choose|pick|tick|check|mark)\s+(?:at\s*least)\s+(\d{1,2})\s+(.+?)[.!]?$/i);
  if(!m||!ACCORDIONS.length)return null;
  const name=groupKey(m[2]),matches=ACCORDIONS.filter(a=>groupKey(a.label)===name);

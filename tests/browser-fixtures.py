@@ -77,6 +77,22 @@ with sync_playwright() as p:
   assert not pg.get_by_label('Paint').is_checked(),last
   assert pg.locator('#next').get_attribute('data-clicked')=='1',last
  run('accordion-named-group-minimum',pageWrap('<strong class="red">Must select atleast 1 GARDEN SUPPLIES</strong>'+accordion('Paint supplies',checkbox('Paint'))+accordion('Garden Supplies',checkbox('Trowel'))+radio('None of the above','none')),groupInstruction)
+ def cfLikeGroup(title, options):
+  controls=''.join(f"""<div class="cf-checkbox-answer"><div role="checkbox" tabindex="0" aria-checked="false" aria-label="{x}" onclick="this.setAttribute('aria-checked',this.getAttribute('aria-checked')==='true'?'false':'true')">{x}</div></div>""" for x in options)
+  return f"""<div class="cf-collapsible-group cf-collapsing-panel"><div class="cf-collapsing-panel__title cf-collapsible-group__title" onclick="this.parentElement.classList.toggle('cf-collapsing-panel--open')">{title}</div><div class="cf-collapsing-panel__body"><div class="cf-collapsible-group__body">{controls}</div></div><div class="cf-collapsible-group__short-info"></div></div>"""
+ def cfActualStructure(pg):
+  last=None
+  for _ in range(16):
+   last=step(pg)
+   if pg.locator('#next').get_attribute('data-clicked')=='1':break
+  assert pg.get_by_label('Trowel').get_attribute('aria-checked')=='true',last
+  assert pg.get_by_label('None of the above').get_attribute('aria-checked')=='false',last
+  assert pg.locator('#next').get_attribute('data-clicked')=='1',last
+  assert last['instructions']['blocked']==0,last
+  assert last['accordion']['count']==2,last
+ cfStyle='<style>.cf-collapsing-panel__title{cursor:pointer;padding:8px}.cf-collapsing-panel__body{height:0;overflow:hidden}.cf-collapsing-panel--open > .cf-collapsing-panel__body{height:auto}.cf-checkbox-answer [role=checkbox]{display:block;padding:8px}</style>'
+ cfNone='<div class="cf-checkbox-answer"><div role="checkbox" aria-label="None of the above" aria-checked="false">None of the above</div></div>'
+ run('cf-clipped-group-named-minimum-and-next',pageWrap(cfStyle+'<strong class="red">Must Select atleast 1 GARDEN SUPPLIES</strong>'+cfLikeGroup('Paint supplies',['Brush','Roller'])+cfLikeGroup('Garden Supplies',['Trowel','Rake'])+cfNone).replace('class="question"','class="question cf-question"'),cfActualStructure)
  def variedMulti(pg):
   outcomes=set()
   for _ in range(20):
