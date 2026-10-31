@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -183,13 +184,40 @@ type MemoryStore struct {
 	readFailed bool
 }
 
-func openMemory(root string) *MemoryStore {
-	s := &MemoryStore{path: filepath.Join(root, "data", "survey-success-memory.json"), Surveys: map[string]*SurveyMemory{}}
+func studyMemoryPath(root, raw string) string {
+	fp := strings.TrimPrefix(memoryFingerprint(raw), "sha256:")
+	pid := "study"
+	if u, err := url.Parse(raw); err == nil {
+		re := regexp.MustCompile(`(?i)p[0-9]{5,}`)
+		if m := re.FindString(u.Query().Get("sname")); m != "" {
+			pid = strings.ToLower(m)
+		} else if m := re.FindString(u.Path); m != "" {
+			pid = strings.ToLower(m)
+		}
+	}
+	return filepath.Join(root, "data", "PID", pid+"-"+fp, "survey-success-memory.json")
+}
+
+func openMemory(root string, study ...string) *MemoryStore {
+	path := filepath.Join(root, "data", "survey-success-memory.json")
+	if len(study) > 0 && study[0] != "" { path = studyMemoryPath(root, study[0]) }
+	s := &MemoryStore{path: path, Surveys: map[string]*SurveyMemory{}}
 	if b, err := os.ReadFile(s.path); err == nil {
 		var raw struct { Surveys map[string]*SurveyMemory `json:"surveys"` }
 		if err := json.Unmarshal(b, &raw); err != nil { s.readFailed = true
 		} else if raw.Surveys != nil { s.Surveys = raw.Surveys }
-	} else if !os.IsNotExist(err) { s.readFailed = true }
+	} else if !os.IsNotExist(err) { s.readFailed = true
+	} else if len(study) > 0 && study[0] != "" {
+		// Migrate only the exact study's fingerprint; never rewrite the old shared file.
+		legacy := filepath.Join(root, "data", "survey-success-memory.json")
+		if b, err := os.ReadFile(legacy); err == nil {
+			var raw struct { Surveys map[string]*SurveyMemory `json:"surveys"` }
+			if json.Unmarshal(b, &raw) == nil {
+				fp := memoryFingerprint(study[0])
+				if m := raw.Surveys[fp]; m != nil { s.Surveys[fp] = m }
+			}
+		}
+	}
 	return s
 }
 

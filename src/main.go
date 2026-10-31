@@ -1428,7 +1428,6 @@ func runConsole(root string, cfg AppConfig) {
 	defer func() { consoleUI = nil }()
 	view.header()
 	view.section("NEW STUDY", "Configure an authorized QA run. Each study keeps its own memory.")
-	mem := openMemory(root)
 	in := bufio.NewReader(os.Stdin)
 	logPath := filepath.Join(root, "data", "launcher.log")
 	logFile, _ := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -1455,6 +1454,8 @@ func runConsole(root string, cfg AppConfig) {
 		_, _ = in.ReadString('\n')
 		return
 	}
+	mem := openMemory(root, u)
+	view.detail("Study memory", filepath.Dir(mem.path))
 	total := promptCompletes(in, logFile)
 	view.section("LIVE SESSION", "The current step updates in place; full events remain in the log.")
 	view.detail("Target", fmt.Sprintf("%d completed run(s)", total))
@@ -1571,6 +1572,9 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 			embeddedPaneReset()
 			sess.detach()
 			logLine(logFile, "In-window pane handed back after %d attempt(s) in window %d.", inWindow, windowNo)
+		} else if abort {
+			sess.detach()
+			logLine(logFile, "Browser left open for review after an unresolved run.")
 		} else if total > 1 {
 			sess.stop(logFile, true)
 			logLine(logFile, "Window %d closed after %d complete(s).", windowNo, inWindow)
@@ -2885,7 +2889,7 @@ func widgetModel(kind string) bool {
 // fatalStatus reports failures that make every further run pointless.
 func fatalStatus(s string) bool {
 	switch s {
-	case "browser_missing", "port_error", "browser_error", "reentry_id_error", "needs_human", "needs_review", "unverified_exit", "unreadable_page":
+	case "browser_missing", "port_error", "browser_error", "reentry_id_error", "needs_human", "needs_review", "unverified_exit", "unreadable_page", "validation_failure", "stalled", "max_steps_or_manual_intervention":
 		return true
 	}
 	return false

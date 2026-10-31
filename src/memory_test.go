@@ -98,6 +98,28 @@ func TestMemoryPersistsBetweenRuns(t *testing.T) {
  if strings.Contains(string(b), "private-id") || strings.Contains(string(b), "token=private") { t.Fatal("memory retained private input or raw URL") }
 }
 
+func TestStudyMemoryUsesSeparatePIDFoldersAndMigratesMatchingLegacy(t *testing.T) {
+ root := t.TempDir()
+ a := "https://survey.example.test/x?study=alpha&sname=p123456789"
+ b := "https://survey.example.test/x?study=beta&sname=p123456789"
+ fa, fb := memoryFingerprint(a), memoryFingerprint(b)
+ legacy := openMemory(root)
+ legacy.addAvoid(fa, "first", "a", "screenout-suspect")
+ legacy.addAvoid(fb, "second", "b", "screenout-suspect")
+ if err := legacy.save(); err != nil { t.Fatal(err) }
+ one := openMemory(root, a)
+ if len(one.avoidFor(fa)) != 1 || len(one.avoidFor(fb)) != 0 { t.Fatal("legacy migration was not scoped to the matching study") }
+ if err := one.save(); err != nil { t.Fatal(err) }
+ two := openMemory(root, b)
+ if len(two.avoidFor(fb)) != 1 || len(two.avoidFor(fa)) != 0 { t.Fatal("second study loaded another study's memory") }
+ if err := two.save(); err != nil { t.Fatal(err) }
+ if one.path == two.path || !strings.Contains(one.path, filepath.Join("PID", "p123456789-")) { t.Fatalf("unsafe study paths: %s / %s", one.path, two.path) }
+ if _, err := os.Stat(one.path); err != nil { t.Fatal(err) }
+ if _, err := os.Stat(two.path); err != nil { t.Fatal(err) }
+ if len(openMemory(root, a).avoidFor(fa)) != 1 { t.Fatal("scoped memory did not reload") }
+ if len(openMemory(root).avoidFor(fb)) != 1 { t.Fatal("legacy memory was changed") }
+}
+
 func TestMemoryFingerprintKeepsStableIdentity(t *testing.T) {
 	a := memoryFingerprint("https://survey.example.com/extwix/x.aspx?__etk=BOX&session=1")
 	b := memoryFingerprint("https://survey.example.com/extwix/x.aspx?__etk=OTHER&session=2")

@@ -52,7 +52,7 @@ func TestAccordionWaitingDoesNotBurnAnswerFailures(t *testing.T) {
 }
 
 func TestUnverifiedExitsAbortRetryLoop(t *testing.T) {
-	for _, status := range []string{"needs_review", "unverified_exit", "unreadable_page"} {
+	for _, status := range []string{"needs_review", "unverified_exit", "unreadable_page", "validation_failure", "stalled", "max_steps_or_manual_intervention"} {
 		if !fatalStatus(status) {
 			t.Errorf("%s must stop repeated attempts", status)
 		}
