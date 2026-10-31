@@ -3,7 +3,7 @@ const a=fs.readFileSync('src/engine/analyze.js','utf8'),d=fs.readFileSync('src/e
 const helper=a.slice(a.indexOf('function parseAgeRange('),a.indexOf('\n}',a.indexOf('function instructionTargets('))+2);
 const initial=d.slice(d.indexOf('  for(const q of questions){'),d.indexOf('\n   const distinct=',d.indexOf('  for(const q of questions){')));
 const select=d.slice(d.indexOf(" if(acted<MAXACT&&!dragOnly){for(const q of questions.filter(x=>x.owner==='select'))"),d.indexOf('\n // Native slider',d.indexOf(" if(acted<MAXACT&&!dragOnly){for(const q of questions.filter(x=>x.owner==='select'))")));
-function state(instruction, labels, ageText='How old are you?', ages=['15','22','35','50'], type='single'){
+function state(instruction, labels, ageText='How old are you?', ages=['15','22','35','50'], type='single', avoids=[]){
  const controls=labels.map(name=>({name,checked:false,disabled:false,getAttribute(){return null}}));
  const q={key:'gender',type,owner:type==='multi'?'check':'radio',text:'Which identity?',els:controls};
  const options=ages.map(n=>({value:n,textContent:n,disabled:false}));
@@ -13,7 +13,7 @@ function state(instruction, labels, ageText='How old are you?', ages=['15','22',
  const ctx={norm:x=>String(x??'').replace(/\s+/g,' ').trim(),attrBlob:()=>'',vis:()=>true,label:e=>e.name,ACCORDIONS:[],document:{querySelectorAll:()=>[]},generalSelectionInstruction:()=>false,
    questions:[q,aq],redBoldInstructions:[inst],redInstructionFor:x=>x===q?inst:null,rhLocalText:()=>'',rhRulesMatching:()=>[],rhRuleApplies:()=>false,
    INSTRUCTION_BLOCK:messages,RH_LOG:[],fireChoice:e=>(e.checked=true),isOn:e=>!!e.checked,selected:[],pairs:[],pickedTrail:[],acts:[],acted:0,MAXACT:45,qkey:x=>String(x).toLowerCase(),
-   completion:false,termination:false,dragOnly:false,selectAnswered:s=>s.selectedIndex>=0,reopen:new Set(),isAvoid:()=>false,exhausted:new Set(),questionText:()=>ageText,
+   completion:false,termination:false,dragOnly:false,selectAnswered:s=>s.selectedIndex>=0,reopen:new Set(),isAvoid:(_q,label)=>avoids.includes(label),exhausted:new Set(),questionText:()=>ageText,
    usePersona:true,P:{Age:35,Gender:'Male',Country:'Test'},preferredFor:()=>'',wouldRebuildBanned:()=>false,matchWant:(xs,w)=>xs.indexOf(w),rnd:()=>0,txt:o=>o.textContent,
    Event:class{constructor(n){this.type=n}}};
  vm.createContext(ctx);vm.runInContext(helper,ctx);vm.runInContext(initial+'\n }',ctx);vm.runInContext(select,ctx);
@@ -43,5 +43,9 @@ t=state('Please select at least two options including Missing',['Alpha','Beta'],
 assert.ok(!t.controls.some(x=>x.checked));assert.ok(t.messages.details.some(x=>x.reason==='required-option-not-identified'));
 t=state('Please select exactly one option',['Alpha','Beta'],'Other question',['1'], 'multi');
 assert.equal(t.controls.filter(x=>x.checked).length,1);assert.equal(t.messages.count,0);
+t=state('Select 2 OR 3 OR 4 options',['A','B','C','D'],'Other question',['1'],'single',['B']);
+assert.equal(t.controls[2].checked,true);assert.equal(t.controls.filter(x=>x.checked).length,1);assert.equal(t.messages.count,0);
+t=state('Select 2 OR 3 OR 4 options',['A','B','C','D'],'Other question',['1'],'single',['B','C','D']);
+assert.equal(t.controls.filter(x=>x.checked).length,0);assert.ok(t.messages.details.some(x=>x.reason==='instruction-conflicts-with-termination-memory'));
 assert.equal(c.instructionWithAgeRemoved('Select Cats and age 21 - 40 and region North'),'Select Cats and age 21 - 40 and region North');
 console.log('PASS cross-question, count and required-option checks (mock DOM)');

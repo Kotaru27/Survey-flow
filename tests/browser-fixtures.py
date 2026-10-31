@@ -186,6 +186,14 @@ with sync_playwright() as p:
   assert d['instructions']['blocked']==0,d
   assert pg.get_by_label('C').is_checked(),d
  run('red-numeric-option-target',pageWrap('<strong class="red">For quality control, select option 3.</strong>'+radio('A')+radio('B')+radio('C')),numberTarget)
+ def numericAlternatives(pg):
+  d=step(pg)
+  assert pg.locator('input:checked').count()==1,d
+  assert pg.get_by_label('B',exact=True).is_checked(),d
+  assert d['instructions']['blocked']==0 and pg.locator('#next').get_attribute('data-clicked')=='1',d
+  (r/'test-evidence').mkdir(exist_ok=True)
+  pg.screenshot(path=str(r/'test-evidence'/'numeric-instruction.png'))
+ run('red-numeric-alternatives-before-option-noun',pageWrap('<strong class="red">Select 2 OR 3 OR 4 options</strong>'+''.join(radio(x) for x in ['A','B','C','D'])),numericAlternatives)
  def numberOutOfRange(pg):
   d=step(pg)
   assert d['instructions']['blocked']>0 and d['unanswered']>0,d

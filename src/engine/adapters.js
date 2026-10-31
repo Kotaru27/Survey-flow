@@ -54,6 +54,10 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
    }
    let desired=instructionForChoice?instructionTargets(q,instructionForChoice):null;
    if(desired?.targets?.some(e=>isAvoid(q.key,label(e)))){
+    if(q.type==='single'&&desired.reason==='ordinal-alternative'){
+     const available=(desired.alternatives||[]).find(e=>!isAvoid(q.key,label(e)));
+     desired={...desired,targets:available?[available]:[]};
+    }
     if(q.type==='single'&&/^label-alternative/.test(desired.reason)){
      desired=instructionTargets({...q,els:q.els.filter(e=>!isAvoid(q.key,label(e)))},instructionForChoice);
     }

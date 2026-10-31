@@ -319,13 +319,21 @@ function instructionTargets(q,instruction){
  for(const m of lower.matchAll(/\b(?:options?|answers?|responses?|choices?|items?)\s*(?:number|no\.?|#)?\s*(\d{1,2}(?:\s*(?:,|\bor\b|\band\b)\s*\d{1,2})*)\b/g)){
   for(const n of m[1].match(/\d{1,2}/g)||[])numeric.push(Number(n)-1);
  }
+ // In a single-choice question, "select 2 or 3 options" identifies
+ // alternative positions. For multi-select it can mean a selection count,
+ // so leave that interpretation to the count handling instead.
+ if(q.type==='single'){
+  for(const m of lower.matchAll(/^\s*(?:please\s+)?(?:select|choose|pick|click|tick|mark|check)\s+(?:the\s+)?(\d{1,2}(?:\s*(?:,|\bor\b)\s*\d{1,2})+)\s*(?:options?|answers?|responses?|choices?|items?)\s*[.!]?\s*$/g)){
+   if(/\bor\b/.test(m[1]))for(const n of m[1].match(/\d{1,2}/g)||[])numeric.push(Number(n)-1);
+  }
+ }
  for(const m of lower.matchAll(/\b(\d{1,2})(?:st|nd|rd|th)\s+(?:option|answer|response|choice|item)\b/g))numeric.push(Number(m[1])-1);
  const ordTargets=ordinal.map(o=>o==='last'?options[options.length-1]:options[INSTR_ORD[o]])
   .concat(numeric.map(i=>options[i]));
  if(ordinal.length||numeric.length){
   if(ordTargets.some(e=>!e))return {targets:[],reason:'ordinal-option-not-found'};
   if(ordTargets.length>1&&q.type==='single'){
-   if(/\bor\b/i.test(text)&&!/\band\b/i.test(text))return {targets:[ordTargets[0]],reason:'ordinal-alternative'};
+   if(/\bor\b/i.test(text)&&!/\band\b/i.test(text))return {targets:[ordTargets[0]],alternatives:[...new Set(ordTargets)],reason:'ordinal-alternative'};
    return {targets:[],reason:'multiple-targets-in-single-select'};
   }
   return {targets:[...new Set(ordTargets)],reason:'ordinal'};
