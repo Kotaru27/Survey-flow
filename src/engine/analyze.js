@@ -387,6 +387,35 @@ function instructionTargets(q,instruction){
 // Unknown, conflicting or exhausted cases stay on the page for review.
 function recoverValidatedChoice(){
  if(!valErr.length)return {changed:false,reason:''};
+ // Some validations state which answer is allowed rather than naming the
+ // rejected one. Only act on an explicit positive command in a local error
+ // belonging to exactly one single-choice group.
+ const errorSelector='[role="alert"],[aria-live="assertive"],.error,.errors,.validation-error,[class*="error" i],[class*="validation" i]';
+ const errorNodes=[...new Set([...document.querySelectorAll(errorSelector)].filter(vis).flatMap(e=>{
+  const items=[...e.querySelectorAll('li')].filter(vis);
+  return items.length?items:[e];
+ }))];
+ const commands=errorNodes.map(e=>({el:e,text:norm(e.textContent||'')})).filter(x=>/^(?:please\s+)?(?:select|choose|pick|tick|mark)\s+.{1,120}[.!]?$/i.test(x.text));
+ const matches=[];
+ for(const command of commands){
+  const owner=command.el.closest('.cf-question,.question,.question-container,fieldset,[data-question]');
+  if(!owner)continue;
+  const local=questions.filter(q=>q.owner==='radio'&&q.els.some(e=>owner.contains(e)));
+  if(local.length!==1)continue;
+  const q=local[0],inst=redInstructionFor(q);
+  if(inst&&!generalSelectionInstruction(inst.text))continue;
+  const parsed=instructionTargets(q,{text:command.text});
+  if(!parsed?.targets?.length||!['explicit-label','exact-label','label-alternative','label-alternative-spacing','ordinal','ordinal-alternative'].includes(parsed.reason))continue;
+  const target=parsed.targets[0];
+  if(!target||!vis(target)||isOn(target)||isAvoid(q.key,label(target)))continue;
+  matches.push({q,target});
+ }
+ if(matches.length===1){
+  const {q,target}=matches[0];
+  if(!fireChoice(target)||!isOn(target))return {changed:false,reason:'validation-change-unverified'};
+  const name=norm(label(target));selected.push(name);pairs.push({question:q.key,option:qkey(name)});pickedTrail.push(qkey(q.key)+'\u0000'+qkey(name));
+  q.noGuess=true;return {changed:true,reason:'validation-answer-changed'};
+ }
  const message=norm(valErr.join(' ')).toLowerCase();
  const selectedNow=[];
  for(const q of questions){

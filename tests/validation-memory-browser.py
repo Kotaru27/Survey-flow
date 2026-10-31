@@ -22,6 +22,14 @@ with sync_playwright() as p:
  d=page.evaluate(script());assert page.get_by_label('Beta').is_checked(),d;assert page.locator('#result').inner_text()=='Accepted: Beta',d;assert page.locator('#next').get_attribute('data-count')=='2',d;page.screenshot(path=str(OUT/'02-validation-after.png'))
  print('PASS validation changed Alpha to Beta and only submitted after change')
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ allowed='''<div class="question"><h3>Choose a synthetic option</h3><label><input type=radio name=pick value=a checked>Alpha</label><label><input type=radio name=pick value=b>Beta</label><label><input type=radio name=pick value=c>Gamma</label><div class=error><ul><li>Please select Beta or Gamma.</li></ul></div></div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
+ setpage(page,allowed);d=page.evaluate(script());assert page.get_by_label('Beta').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d;assert 'validation-changed' in d['action'],d
+ print('PASS local allowed-option validation changes the answer and retries')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ conflict=allowed.replace('<h3>Choose a synthetic option</h3>','<h3>Choose a synthetic option</h3><strong style="color:red">Please select Alpha</strong>')
+ setpage(page,conflict);d=page.evaluate(script());assert page.get_by_label('Alpha').is_checked(),d;assert page.locator('#next').get_attribute('data-count') is None,d
+ print('PASS allowed-option validation does not override a conflicting red instruction')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
  minimum='''<div class="question"><h3>Choose items</h3><label><input type=checkbox name=items checked>Alpha</label><label><input type=checkbox name=items>Beta</label><div class=error id=error>Please select at least two options.</div><div id=result hidden></div></div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0));if(document.querySelectorAll('input[name=items]:checked').length>=2){document.querySelector('#error').hidden=true;let r=document.querySelector('#result');r.hidden=false;r.textContent='Accepted'}">Next</button>'''
  setpage(page,minimum);d=page.evaluate(script());assert page.get_by_label('Alpha').is_checked() and page.get_by_label('Beta').is_checked(),d;assert page.locator('#result').inner_text()=='Accepted',d;assert page.locator('#next').get_attribute('data-count')=='1',d
  print('PASS minimum-count validation added a choice and continued on the same page')
