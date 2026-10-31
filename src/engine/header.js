@@ -118,15 +118,23 @@ const rhRuleById=q=>{
 // page, and on a page holding two checks that can be the same sentence for both - which
 // is how "What year was last year?" gets answered with this year's answer.
 const rhRuleText=q=>rhLocalText(q);
+const rhImageMatch=(rule,q)=>{
+ if(!rule.imageSrc)return true;
+ const e=q?.els?.[0],box=e?.closest?.('.cf-question,.question,.question-container,fieldset,[data-question]');
+ if(!box)return false;
+ return [...box.querySelectorAll('img')].some(i=>String(i.currentSrc||i.src||'').split('?')[0].toLowerCase()===String(rule.imageSrc).toLowerCase());
+};
 const rhTextRuleFor=(q,text)=>{
   const t=norm(text||'').toLowerCase();
   if(!t)return null;
   for(const r of RH_RULES){
+   if(!rhImageMatch(r,q))continue;
    if(r.text){
     try{if(new RegExp(String(r.text),'i').test(t))return r}catch{}
    }
   }
   for(const r of RH_RULES){
+   if(!rhImageMatch(r,q))continue;
    if(r.contains&&t.indexOf(String(r.contains).toLowerCase())>=0)return r;
   }
   return null;
@@ -239,6 +247,8 @@ const rhHow=(own,near)=>own?(near?'nearest-rule':'rule'):'none';
 // option when the question is "select the fourth answer".
 const rhWanted=rule=>{
  const list=[];
+ if(rule.dynamic==='currentYear')list.push(String(new Date().getFullYear()));
+ if(rule.dynamic==='previousYear')list.push(String(new Date().getFullYear()-1));
  if(Array.isArray(rule.answers))for(const a of rule.answers)list.push(String(a));
  if(rule.answer!=null&&String(rule.answer)!=="")list.push(String(rule.answer));
  return list.map(x=>x.trim()).filter(Boolean);
@@ -269,6 +279,11 @@ const rhRgbOf=o=>{const c=rhRgbsOf(o);return c.length?c[0]:null};
 const rhWords=s=>norm(String(s||'')).toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>0);
 const rhPick=(rule,opts)=>{
  if(!opts.length)return null;
+ if(rule.strict){
+  const wants=rhWanted(rule).map(x=>norm(x).toLocaleLowerCase());
+  const hits=opts.filter(o=>wants.includes(norm(o.label||'').toLocaleLowerCase()));
+  return hits.length===1?hits[0]:null;
+ }
  // "select the fourth answer" and friends: the position is the answer, whatever the
  // options happen to be called.
  if(rule.index==null){

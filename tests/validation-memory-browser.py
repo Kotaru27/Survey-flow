@@ -45,6 +45,17 @@ with sync_playwright() as p:
  setpage(page,ambiguous);d=page.evaluate(script());assert not page.get_by_label('Utility service').is_checked(),d;assert page.locator('#next').get_attribute('data-count') is None,d;assert d['instructions']['blocked']>0,d
  print('PASS ambiguous required label is held for review')
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ known='''<div class="question"><h3>Enter the test number?</h3><input id=known type=number></div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
+ setpage(page,known);d=page.evaluate(script({'redHerring':[{'contains':'Enter the test number?','kind':'text','strict':True,'answer':'4'}]}));assert page.locator('#known').input_value()=='4',d;assert page.locator('#next').get_attribute('data-count')=='1',d
+ print('PASS known numeric text check uses its answer rather than persona')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ choice='''<div class="question"><h3>Pick the synthetic key?</h3><label><input type=radio name=key>Beta</label><label><input type=radio name=key>Alpha</label></div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
+ setpage(page,choice);d=page.evaluate(script({'redHerring':[{'contains':'Pick the synthetic key?','strict':True,'answer':'Alpha'}]}));assert page.get_by_label('Alpha').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
+ print('PASS known choice check uses answer label with shuffled options')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ setpage(page,choice);d=page.evaluate(script({'redHerring':[{'contains':'Pick the synthetic key?','strict':True,'answer':'Gamma'}]}));assert page.locator('input:checked').count()==0,d;assert page.locator('#next').get_attribute('data-count') is None,d
+ print('PASS missing known answer does not fall back to guessing')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
  summary='''<div class="question"><h3>Choose an item and provide details</h3><label><input type=radio name=item checked>Alpha</label><label>Details <input type=text id=detail oninput="document.querySelector('#local-error').hidden=true"></label><div class=error id=local-error>Please provide an answer.</div></div><div role=alert>One or more questions require further input.</div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
  setpage(page,summary);d=page.evaluate(script({'needOpen':True}));assert page.locator('#detail').input_value(),d;assert page.locator('#local-error').is_hidden(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
  d=page.evaluate(script({'needOpen':True}));assert page.locator('#next').get_attribute('data-count')=='1',d

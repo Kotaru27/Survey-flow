@@ -59,6 +59,12 @@ with sync_playwright() as p:
   assert page.locator('#next').get_attribute('data-clicked') is None,result
   assert result['instructions']['blocked']>0,result
  print('PASS unrecognized conflicting mix instructions remain blocked')
+ page.close();page=b.new_page()
+ page.set_content('''<div class="question"><h3>Rate the only remaining item</h3><font color=red>we need to select mix of yes and no . Dont select all NO</font><div role=radiogroup><div role=radio aria-checked=false onclick="this.setAttribute('aria-checked','true')">Yes</div><div role=radio aria-checked=false onclick="this.setAttribute('aria-checked','true')">No</div></div></div><button id=next onclick="this.dataset.clicked='1'">Next</button>''')
+ result=page.evaluate(engine)
+ assert page.locator('[role=radio]').nth(0).get_attribute('aria-checked')=='true',result
+ assert page.locator('#next').get_attribute('data-clicked')=='1',result
+ print('PASS single filtered row satisfies explicit not-all-no rule')
  seen=set()
  for trial in range(12):
   page.close();page=b.new_page()

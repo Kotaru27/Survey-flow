@@ -22,7 +22,7 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
    if(q.noGuess)continue;
    if(q.owner==='text'||q.owner==='select')continue;
    const qtext=rhLocalText(q);
-   const localHits=rhRulesMatching(qtext).filter(r=>rhRuleApplies(r,qtext));
+   const localHits=rhRulesMatching(qtext).filter(r=>rhRuleApplies(r,qtext)&&rhImageMatch(r,q));
    // A colored instruction applies only to its own question. Never apply a single
    // red sentence to every radio group on a multi-question page.
    const instruction=redInstructionFor(q);
@@ -32,6 +32,19 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
    // A redundant "do not select all yes/no" constraint is compatible with a
    // mix. Reject other extra clauses rather than discarding instructions.
    const mixRule=instruction&&/^(?:(?:we\s+need\s+to|please|must)\s+)?(?:select|choose|pick)\s+(?:a\s+)?mix(?:ture)?\s+of\s+yes\s+and\s+no\s*(?:[.!;]+\s*(?:do\s+not|don['’]?t)\s+(?:select|choose|pick)\s+all\s+(?:yes|no)\s*)?[.!]?$/i.test(norm(instruction.text));
+   // A filtered grid can contain just one row, so a mix is impossible. Where
+   // the same instruction expressly forbids all-no, select the unique Yes.
+   if(mixRule&&!pageModel&&q.owner==='radio'&&questions.filter(x=>x.owner==='radio').length===1&&/\b(?:do\s+not|don['’]?t)\s+(?:select|choose|pick)\s+all\s+no\b/i.test(instruction.text)){
+    const opt=q.els.filter(e=>vis(e)&&!e.disabled),yes=opt.filter(e=>norm(e.textContent||'').toLowerCase()==='yes'),no=opt.filter(e=>norm(e.textContent||'').toLowerCase()==='no');
+    if(opt.length===2&&yes.length===1&&no.length===1){
+     q.noGuess=true;
+     if(!isOn(yes[0])){
+      if(isAvoid(q.key,label(yes[0]))||!fireChoice(yes[0])||!isOn(yes[0])){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'single-row-mix-unavailable',question:q.key});continue}
+      const name=label(yes[0]);selected.push(name);pairs.push({question:q.key,option:qkey(name)});pickedTrail.push(qkey(q.key)+'\u0000'+qkey(name));acted++;
+     }
+     acts.push('single-row-not-all-no');continue;
+    }
+   }
    if(mixRule&&pageModel?.kind==='auto_carousel_grid'&&q.owner==='radio'){
     q.noGuess=true;
     const current=pageModel.slides.find(s=>s.getAttribute('aria-hidden')==='false'&&s.querySelector('[role="radio"],input[type="radio"]'));
@@ -156,6 +169,7 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
     continue;
    }
    const own=localList[0]||rhRuleFor(q,qtext);
+   if(own?.strict)q.noGuess=true;
    // The id is checked on its own so the log can say which of the two ways it was found.
    const via=localList.length?'own-words':(rhRuleById(q)?'id':'none');
    const looks=rhIsCheck(qtext);
@@ -212,7 +226,6 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
    RH_LOG.push({q:qkey(q.key),did:'trap-avoided',avoided:String(trap.label||trap.code),left:opts.filter(o=>o!==trap).length});
    rhDiag(q.key,'trap-avoided',{text:qtext.slice(0,120),avoided:String(trap.label||trap.code),how:how});
   }
-  if(rhAnswered(q,qtext)){RH_LOG.push({q:qkey(q.key),did:'already-answered'});rhDiag(q.key,'already-answered',{text:qtext.slice(0,120),how:how});continue}
   const pick=rhPick(rule,opts);
   if(!pick){
    const wantsAnswer=(rule.answer!=null&&String(rule.answer)!=='')||rule.index!=null;
@@ -221,8 +234,10 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
     :{q:qkey(q.key),did:'trap-list-applied',note:String(rule.note||'')});
    rhDiag(q.key,wantsAnswer?'rule-matched-but-no-option-carries-that-answer':'trap-list-applied',
     {text:qtext.slice(0,140),how:how,want:String(rule.answer==null?'':rule.answer),options:opts.map(o=>String(o.label||o.code)).slice(0,8)});
+   if(rule.strict){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'known-check-answer-unavailable',question:q.key})}
    continue;
   }
+  if(rhAnswered(q,qtext)&&(!rule.strict||isOn(pick.el))){RH_LOG.push({q:qkey(q.key),did:'already-answered'});rhDiag(q.key,'already-answered',{text:qtext.slice(0,120),how:how});continue}
   if(!fireChoice(pick.el)){RH_LOG.push({q:qkey(q.key),did:'CLICK-FAILED',want:String(pick.label||pick.code)});rhDiag(q.key,'click-failed',{text:qtext.slice(0,120),how:how});continue}
   try{pick.el.setAttribute('data-ap-rh','1')}catch{}
   selected.push(pick.label||pick.code);
@@ -464,6 +479,15 @@ let c=(qt+' '+questionText(s)).toLowerCase();
   if(acted>=MAXACT)break;
 const e=q.els[0];if(!e||e.disabled||e.readOnly||!vis(e))continue;
    const qt=q.text,qk=q.key;
+  const checkText=rhLocalText(q),checkRule=rhRuleFor(q,checkText);
+  if(checkRule?.kind==='text'){
+   const answers=rhWanted(checkRule);
+   if(answers.length!==1){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'known-check-answer-unavailable',question:qk});continue}
+   const value=answers[0];
+   if(String(e.value||'')!==value)typeInto(e,value);
+   if(String(e.value||'')!==value||(e.validity&&e.validity.valid===false)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'known-check-answer-unverified',question:qk});continue}
+   selected.push(value);pairs.push({question:qk,option:qkey(value)});acts.push('attention-check-text');acted++;continue;
+  }
    let c=qt.toLowerCase();
   const hasId=String(P.ReentryID||'').trim()!=='';
   const qjunk=!/[a-z]{3,}/.test(c)||/[{};]|\.cf-[a-z]/.test(c);
