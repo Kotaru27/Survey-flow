@@ -30,7 +30,12 @@ async function renderedNow(){
   const bodyPrompt=[...document.querySelectorAll('.cf-question,.question,.question-container,[data-question],fieldset')]
    .filter(shown).map(e=>norm(e.textContent||'')).find(Boolean)||'';
   const prompt=(title+' '+bodyPrompt.slice(0,700)).trim();
-  const questionExpected=prompt.length>0&&(/\?|\b(?:select|choose|pick|rate|rank|enter|indicate|which|what|how|have|do|did|are|is|would|could)\b/i.test(prompt));
+  // A statement containing words such as 'would' or 'questions' is not by
+  // itself evidence of an input. Keep waiting for direct questions and clear
+  // answer instructions, including when their controls mount asynchronously.
+  const direct=/\?|(?:^|[.!:]\s+)\s*(?:which|what|how|where|when|who|whose|why|have|has|do|does|did|are|is|would|could)\b/i;
+  const directive=/\b(?:select|choose|pick|rate|rank|enter|indicate|tick|check)\b/i;
+  const questionExpected=prompt.length>0&&(direct.test(prompt)||directive.test(prompt));
   window.__apRenderPending=questionExpected;
   if(questionExpected)return false;
   return !document.querySelector('[aria-required="true"],[required]');

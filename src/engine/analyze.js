@@ -339,6 +339,20 @@ function instructionTargets(q,instruction){
  const tail=command[1].replace(/\s+(?:option|answer|choice|item)s?\s*\.?$/,'').trim();
  const normLabel=v=>norm(v).toLowerCase().replace(/[.!?]+$/,'');
  const chunks=tail.split(/\s*(?:,|\band\b|\bor\b)\s*/i).map(x=>normLabel(x.replace(/^[\s'"“”‘’]+|[\s'"“”‘’]+$/g,''))).filter(Boolean);
+ // Pure OR means any explicitly and uniquely matched alternative is valid.
+ // Prefer an exact label; permit only whitespace differences as a fallback.
+ // Do not infer conditional or negative clauses from approximate text.
+ if(q.type==='single'&&/\bor\b/i.test(tail)&&!/\b(?:and|not|unless|except|excluding|without|if|when)\b/i.test(tail)&&chunks.length>1&&chunks.every(c=>/^[\p{L}\p{N}\s'’.\-]+$/u.test(c))){
+  for(const loose of [false,true]){
+   const matches=[];
+   for(const chunk of chunks){
+    const normalized=loose?chunk.replace(/\s+/g,''):chunk;
+    const hits=options.filter((_,i)=>{let l=normLabel(labels[i]);if(loose)l=l.replace(/\s+/g,'');return l===normalized});
+    if(hits.length===1)matches.push(hits[0]);
+   }
+   if(matches.length)return {targets:[matches[0]],reason:loose?'label-alternative-spacing':'label-alternative'};
+  }
+ }
  const matches=[];
  for(const chunk of chunks){
   // Only accept a unique exact label or its simple English plural. Whole

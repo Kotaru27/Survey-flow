@@ -13,6 +13,12 @@ for(const [text,names,type,expected] of [
  ['Select option 2 and 3',['a','b','c'],'multi','b|c'],
  ['Select unknown',['Male','Female'],'single',''],
  ['Select Male',['Male','Female'],'single','Male'],
- ['Select Females',['Female','Female'],'single','']
+ ['Select Females',['Female','Female'],'single',''],
+ ['Select Northshore or South Ridge',['North Shore','South Ridge'],'single','South Ridge'],
+ ['Select Northshore or Unknown',['North Shore','West Ridge'],'single','North Shore'],
+ ['Select AB or Missing',['A B','AB'],'single','AB'],
+ ['Select Alpha or Beta if eligible',['Alpha','Beta'],'single',''],
+ ['Select Fmale or Unknown',['Male','Female'],'single',''],
+ ['Select Alpha and Unknown',['Alpha','Beta'],'multi','']
 ]) {const got=run(text,names,type);assert.equal(got.names,expected,`${text}: ${JSON.stringify(got)}`);}
-console.log('PASS 9 focused instruction cases');
+console.log('PASS 15 focused instruction cases');

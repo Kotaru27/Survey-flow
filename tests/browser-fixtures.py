@@ -146,6 +146,22 @@ with sync_playwright() as p:
   assert pg.locator('#next').get_attribute('data-clicked')=='1',d
  run('late-mounted-required-choice',
      """<html><head>"""+STYLE+"""</head><body><div class=question><h3 class=question-title>Have you tried this product?</h3><div id=choices></div></div><button id=next onclick="this.dataset.clicked=String(1+Number(this.dataset.clicked||0))">Next</button><script>setTimeout(()=>{document.getElementById('choices').innerHTML='<label><input type=radio name=delayed>Delayed yes</label><label><input type=radio name=delayed>Delayed no</label>'},600)</script></body></html>""",delayedMounted)
+ def infoOnly(pg):
+  d=step(pg)
+  assert pg.locator('#next').get_attribute('data-clicked')=='1',d
+  assert 'render-waiting' not in d['action'],d
+ run('text-only-information-page-advances',
+     """<html><head>"""+STYLE+"""</head><body><section class=question><p>We would like to learn about your experience. This survey takes a few minutes. Thank you for helping us.</p></section><button id=next onclick="this.dataset.clicked=1">Next</button></body></html>""",infoOnly)
+ def spelledAlternative(pg):
+  d=step(pg)
+  assert pg.get_by_label('South Ridge').is_checked(),d
+  assert d['instructions']['blocked']==0 and pg.locator('#next').get_attribute('data-clicked')=='1',d
+ run('single-choice-or-one-exact-other-spacing',pageWrap('<span style="color:red">Please select Northshore OR South Ridge</span>'+radio('North Shore')+radio('South Ridge')+radio('Other')),spelledAlternative)
+ def spacingOnly(pg):
+  d=step(pg)
+  assert pg.get_by_label('North Shore').is_checked(),d
+  assert d['instructions']['blocked']==0,d
+ run('single-choice-spacing-variant-only',pageWrap('<span style="color:red">Select Northshore OR Not listed</span>'+radio('North Shore')+radio('Another place')),spacingOnly)
  def foreverEmpty(pg):
   d=step(pg)
   assert 'render-waiting' in d['action'] and d['unanswered']>0,d
