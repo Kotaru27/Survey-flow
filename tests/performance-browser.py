@@ -21,6 +21,7 @@ with sync_playwright() as p:
   samples=[]
   for _ in range(4):
    pg.set_content(html)
+   pg.evaluate('delete window.__apNavIntent')
    start=time.perf_counter();d=pg.evaluate(code);samples.append((time.perf_counter()-start)*1000)
    assert pg.locator('input[name=pick]').is_checked(),d
    assert pg.locator('#next').get_attribute('data-clicked')=='yes',d
