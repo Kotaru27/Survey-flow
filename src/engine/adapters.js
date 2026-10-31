@@ -308,7 +308,7 @@ let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&
 const context=qt.toLowerCase();
    // "None" and "not applicable" are valid exclusive choices. Do not assume
    // a qualifying answer based on occupation, purchase history or products.
-   const exclusive=e=>/^(none(?: of (?:the|these|above))?|not applicable|no one|nobody)$/i.test(norm(label(e)));
+   const exclusive=e=>/^(none(?: of (?:the |these )?(?:above|listed))?|not applicable|no one|nobody)$/i.test(norm(label(e)));
    let cand=active.slice();
   let usable=cand.filter(e=>!isAvoid(qk,label(e)));
   if(!usable.length&&cand.length){exhausted.add(qk);INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'no-safe-alternative',question:qk});continue}
