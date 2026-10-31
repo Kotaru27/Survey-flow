@@ -472,6 +472,8 @@ func launchBrowser(root string, logFile *os.File, cfg AppConfig) (*BrowserSessio
 	if cfg.Incognito {
 		args = append(args, "--incognito")
 	}
+	// Used only by the cloud QA runner; normal console launches remain visible.
+	if os.Getenv("SURVEY_QA_HEADLESS") == "1" { args = append(args, "--headless=new", "--disable-gpu") }
 	args = append(args, "about:blank")
 	cmd := exec.Command(browser, args...)
 	sess := &BrowserSession{cmd: cmd, port: port, profile: profile, done: make(chan struct{})}
