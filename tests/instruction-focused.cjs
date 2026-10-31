@@ -10,6 +10,7 @@ for(const [text,names,type,expected] of [
  ['Select Female and Male',['Male','Female'],'single',''],
  ['Select option 2 or 3 or 4',['a','b','c','d'],'single','b'],
  ['Select 2 OR 3 OR 4 options',['a','b','c','d'],'single','b'],
+ ['Choose 5 OR 6 OR 7 responses',['a','b','c','d','e','f','g'],'single','e'],
  ['Select 2 OR 3 OR 4 options except 2',['a','b','c','d'],'single',''],
  ['Select 2 OR 3 OR 9 options',['a','b','c','d'],'single',''],
  ['Select 2 OR 3 options',['a','b','c','d'],'multi',''],
