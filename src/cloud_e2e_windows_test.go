@@ -24,9 +24,9 @@ func TestCloudBrowserRecoveryEndToEnd(t *testing.T) {
   w.Header().Set("Content-Type","text/html; charset=utf-8")
   switch r.URL.Path {
   case "/", "/start":
-   fmt.Fprint(w,`<!doctype html><html><body><section class="question"><h3>Do you use this product?</h3><label><input type="radio" name="usage" value="yes">Yes</label><label><input type="radio" name="usage" value="no">No</label><p class="error" id="err" hidden>Yes is not allowed. Choose a different answer.</p></section><button id="next" onclick="let e=document.querySelector('input[name=usage]:checked');if(!e)return;if(e.value==='yes'){document.querySelector('#err').hidden=false}else{location.href='/choice'}">Next</button></body></html>`)
+   fmt.Fprint(w,`<!doctype html><html><body><section class="question"><h3>Do you use this product?</h3><label><input type="radio" name="usage" value="yes" checked>Yes</label><label><input type="radio" name="usage" value="no">No</label><p class="error" id="err" hidden>Yes is not allowed. Choose a different answer.</p></section><button id="next" onclick="let e=document.querySelector('input[name=usage]:checked');if(!e)return;if(e.value==='yes'){document.querySelector('#err').hidden=false}else{location.href='/choice'}">Next</button></body></html>`)
   case "/choice":
-   fmt.Fprint(w,`<!doctype html><html><body><section class="question"><h3>What is your gender?</h3><label><input type="radio" name="gender" value="male">Male</label><label><input type="radio" name="gender" value="female">Female</label></section><button id="next" onclick="let e=document.querySelector('input[name=gender]:checked');if(e)location.href='/route?choice='+e.value">Next</button></body></html>`)
+   fmt.Fprint(w,`<!doctype html><html><body><section class="question"><h3>What is your gender?</h3><label><input type="radio" name="gender" value="male" checked>Male</label><label><input type="radio" name="gender" value="female">Female</label></section><button id="next" onclick="let e=document.querySelector('input[name=gender]:checked');if(e)location.href='/route?choice='+e.value">Next</button></body></html>`)
   case "/route":
    v:=r.URL.Query().Get("choice");mu.Lock();choices=append(choices,v);mu.Unlock()
    dest:="/BCEndPages/en-Qual.html";if v=="male"{dest="/BCEndPages/en-Term.html"};http.Redirect(w,r,dest,http.StatusFound)

@@ -4,7 +4,7 @@ const RAW=PERSONA;
 // side performs it between steps. Declared up front so the adapters can fill it.
 const dragRequests=[];
 const pick=(pascal,camel)=>RAW[pascal]!==undefined&&RAW[pascal]!==null&&RAW[pascal]!==''?RAW[pascal]:RAW[camel];
-const P=Object.assign({},RAW,{Name:pick('name','name'),Gender:pick('Gender','gender'),Age:pick('Age','age'),Country:pick('Country','country'),City:pick('City','city'),YesNo:pick('YesNo','yesNo'),Rating:pick('Rating','rating'),MultiSelectCount:pick('MultiSelectCount','multiSelectCount'),OpenText:pick('OpenText','openText'),Number:pick('Number','number'),ReentryID:String(pick('ReentryID','reentryID')||'')});
+const P=Object.assign({},RAW,{Name:pick('name','name'),Gender:pick('Gender','gender'),Age:pick('Age','age'),Country:pick('Country','country'),City:pick('City','city'),YesNo:pick('YesNo','yesNo'),Rating:pick('Rating','rating'),MultiSelectCount:pick('MultiSelectCount','multiSelectCount'),OpenText:pick('OpenText','openText'),Number:pick('Number','number'),AnswerMode:pick('AnswerMode','answerMode'),ReentryID:String(pick('ReentryID','reentryID')||'')});
 const reentryPattern=/(reentry.?id|reentry|stores the id used for reentry|id used for reentry|test.?id|unique.?id|respondent.?id|panel(ist)?.?id|participant.?id)/i;
 const norm=s=>String(s==null?'':s).replace(/\s+/g,' ').trim();
 // Confirmit-style pages paint the shell first and render the question afterwards, so a
