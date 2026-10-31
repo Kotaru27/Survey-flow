@@ -56,6 +56,13 @@ with sync_playwright() as p:
  setpage(page,choice);d=page.evaluate(script({'redHerring':[{'contains':'Pick the synthetic key?','strict':True,'answer':'Gamma'}]}));assert page.locator('input:checked').count()==0,d;assert page.locator('#next').get_attribute('data-count') is None,d
  print('PASS missing known answer does not fall back to guessing')
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ role='''<div class="question"><h3>Pick the synthetic key?</h3><div role=radio aria-checked=false onclick="this.setAttribute('aria-checked','true')">Beta</div><div role=radio aria-checked=false onclick="this.setAttribute('aria-checked','true')">Alpha</div></div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
+ setpage(page,role);d=page.evaluate(script({'redHerring':[{'contains':'Pick the synthetic key?','strict':True,'answer':'Alpha'}]}));assert page.locator('[role=radio]').nth(1).get_attribute('aria-checked')=='true',d;assert page.locator('#next').get_attribute('data-count')=='1',d
+ print('PASS known choice supports custom radio controls')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ setpage(page,known);d=page.evaluate(script({'redHerring':[{'contains':'Enter the test number?','kind':'text','strict':True,'dynamic':'currentYear'}]}));assert page.locator('#known').input_value()==str(page.evaluate('new Date().getFullYear()')),d
+ print('PASS known current-year answer is dynamic')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
  summary='''<div class="question"><h3>Choose an item and provide details</h3><label><input type=radio name=item checked>Alpha</label><label>Details <input type=text id=detail oninput="document.querySelector('#local-error').hidden=true"></label><div class=error id=local-error>Please provide an answer.</div></div><div role=alert>One or more questions require further input.</div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
  setpage(page,summary);d=page.evaluate(script({'needOpen':True}));assert page.locator('#detail').input_value(),d;assert page.locator('#local-error').is_hidden(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
  d=page.evaluate(script({'needOpen':True}));assert page.locator('#next').get_attribute('data-count')=='1',d
