@@ -357,6 +357,7 @@ let radioQs=dragOnly?[]:questions.filter(q=>q.owner==='radio'&&!q.exclusiveNone&
  const gridChanged=()=>{
   if(gridControlCount()!==gridInitialControls||questions.some(x=>x.grid&&x.els.some(e=>e.isConnected===false))){window.__apRenderPending=true;gridInterrupted=true;return true}
   if(!valErr.length&&readErrs().length){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-validation-appeared'});gridInterrupted=true;return true}
+  if(gridCanBatch&&findRedBoldInstructions().length){window.__apRenderPending=true;gridInterrupted=true;return true}
   if(!gridVerified.every(isOn)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-answer-not-retained'});gridInterrupted=true;return true}
   return false;
  };

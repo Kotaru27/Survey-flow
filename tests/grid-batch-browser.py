@@ -45,4 +45,8 @@ with sync_playwright() as p:
  assert page.locator('.error').is_visible() and page.locator('#next').get_attribute('data-clicked') is None,d
  assert d['instructions']['blocked']>0,d
  print('PASS validation appearing during a grid batch blocks navigation')
+ page.set_content(html(script="if(e.closest('.row').dataset.row==='0')queueMicrotask(()=>{let x=document.createElement('strong');x.style.color='red';x.textContent='Please select the second answer';document.querySelector('.question').appendChild(x)})"));page.evaluate('delete window.__apNavIntent');d=page.evaluate(engine)
+ assert page.locator('#next').get_attribute('data-clicked') is None and page.locator('input:checked').count()==1,d
+ assert 'render-waiting' in d['action'],d
+ print('PASS a newly revealed red instruction stops grid batching')
  b.close()
