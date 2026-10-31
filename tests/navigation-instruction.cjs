@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const nav=fs.readFileSync('src/engine/navigate.js','utf8');
+const nav=fs.readFileSync('src/engine/navigate.js','utf8').replace(/\r\n/g,'\n');
 const start=nav.indexOf('if(!completion&&!termination){\n if(window.__apRenderPending)');
 const end=nav.indexOf('\nconst chainOf=',start);
 const code=nav.slice(start,end);
