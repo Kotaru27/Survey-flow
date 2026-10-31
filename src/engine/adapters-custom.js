@@ -15,9 +15,11 @@ if(!completion&&!termination&&pageModel){
    if(cur){used.push(cur);continue}
    const v=openTextAnswer(used);
    if(!typeInto(e,v))continue;
-   const got=String(e.value||'').trim()||v;
+   const got=String(e.value||'').trim();
+   if(!got||!qAnswered(q)){acts.push('seq-text-mismatch');continue}
    used.push(got);
    selected.push(got);
+   pairs.push({question:q.key,option:qkey(got)});
    acts.push('seq-text');
    acted++;
   }

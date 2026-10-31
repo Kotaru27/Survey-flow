@@ -54,7 +54,7 @@ refreshCustom();
 const errorsAfterAnswers=readErrs();
 const summaryOnly=errorsAfterAnswers.every(e=>/^(?:one or more questions require further input|please correct the errors below)[.!]?$/i.test(norm(e)));
 if(valErr.length&&pairs.length&&summaryOnly){
- INSTRUCTION_BLOCK.details=INSTRUCTION_BLOCK.details.filter(x=>x?.reason!=='unmatched-validation');
+ INSTRUCTION_BLOCK.details=INSTRUCTION_BLOCK.details.filter(x=>!['unmatched-validation','ambiguous-validation'].includes(x?.reason));
  INSTRUCTION_BLOCK.count=INSTRUCTION_BLOCK.details.length;
 }
 if(!completion&&!termination){

@@ -39,6 +39,16 @@ with sync_playwright() as p:
  d=page.evaluate(script({'needOpen':True}));assert page.locator('#next').get_attribute('data-count')=='1',d
  print('PASS corrected field allows one retry with stale summary, but unchanged page is not retried')
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ sequence='''<div class="question"><h3>Please add details</h3><label><input type=checkbox name=items checked>Alpha</label><label><input type=checkbox name=items checked>Beta</label><input type=text id=detail1 oninput="document.querySelector('#seq-error').hidden=true"><input type=text id=detail2 oninput="document.querySelector('#seq-error').hidden=true"><div class=error id=seq-error>Alpha Beta Please provide an answer.</div></div><div role=alert>One or more questions require further input.</div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
+ setpage(page,sequence);d=page.evaluate(script({'needOpen':True}))
+ assert page.locator('#detail1').input_value() and page.locator('#detail2').input_value(),d
+ assert page.locator('#seq-error').is_hidden(),d
+ assert page.locator('#next').get_attribute('data-count')=='1',d
+ assert d['instructions']['blocked']==0,d
+ assert len([x for x in d['selectedPairs'] if x['question'].startswith('text|')])==2,d
+ d=page.evaluate(script({'needOpen':True}));assert page.locator('#next').get_attribute('data-count')=='1',d
+ print('PASS sequential text corrections clear stale summary once without repeated submission')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
  setpage(page,summary.replace("oninput=\"document.querySelector('#local-error').hidden=true\"",""));d=page.evaluate(script({'needOpen':True}));assert page.locator('#local-error').is_visible(),d;assert page.locator('#next').get_attribute('data-count') is None,d
  print('PASS remaining specific validation prevents retry')
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
