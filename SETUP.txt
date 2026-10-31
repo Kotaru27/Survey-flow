@@ -1,0 +1,20 @@
+SURVEY AUTOPILOT  |  STYLED CONSOLE · PROGRESSION FIX
+=========================================
+
+1. Extract this ZIP to a folder you can write to.
+2. Double-click SurveyAutopilot.exe.
+3. Paste your authorized QA survey URL.
+4. Select the number of completed test runs (Enter = 1).
+5. Watch the live steps, warnings and results in the styled console.
+6. Review data\launcher.log and reports\ for full diagnostics.
+
+The application is CONSOLE ONLY. It opens a browser for authorized survey
+QA; there is no embedded GUI or WebView2 dependency.
+
+Windows 10+ is recommended for full ANSI color and box drawing. If the
+terminal doesn't support the color mode, the output remains readable.
+
+IMPORTANT: Completion is only counted on a qualifying Qual.html URL. Missing
+answers result in a needs_review stop; don't confuse that with a success.
+
+MORE INFO: README.md, QUESTION_TYPES.md, QA_REPORT.md

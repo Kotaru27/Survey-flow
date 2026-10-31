@@ -1,0 +1,12 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const h=fs.readFileSync('src/engine/header.js','utf8');
+const source=h.slice(h.indexOf('const vis=e=>'),h.indexOf('\nconst cleanText=',h.indexOf('const vis=e=>')))+'\nglobalThis.check=vis;';
+const c={getComputedStyle:e=>e.css||{display:'block',visibility:'visible',opacity:'1'}};vm.createContext(c);vm.runInContext(source,c);
+const box=(width,height)=>({getBoundingClientRect:()=>({width,height})});
+const visible=box(20,20),hidden=box(0,0),input={...hidden,disabled:false,labels:[visible],matches:()=>true};
+assert.equal(c.check(input),true,'zero-sized input with visible label');
+assert.equal(c.check({...input,labels:[hidden]}),false,'hidden label cannot expose hidden choice');
+assert.equal(c.check({...input,disabled:true}),false,'disabled controls must not be used');
+assert.equal(c.check({...input,labels:[{...visible,css:{display:'none',visibility:'visible',opacity:'1'}}]}),false,'non-rendered label');
+assert.equal(c.check({...input,labels:[{...visible,css:{display:'block',visibility:'visible',opacity:'0'}}]}),false,'transparent label');
+console.log('PASS 5 styled-input visibility checks (mock DOM)');

@@ -1,0 +1,17 @@
+{
+  "name": "Normal Test Respondent - UK",
+  "gender": "Male",
+  "age": 30,
+  "country": "United Kingdom",
+  "city": "London",
+  "yesNo": "Yes",
+  "rating": "middle",
+  "multiSelectCount": 4,
+  "openText": "This is a test response",
+  "number": 30,
+  "reentryID": "",
+  "reentryTemplate": "MT{uid}",
+  "reentryStart": 1,
+  "answerMode": "persona",
+  "variedPerRun": true
+}
