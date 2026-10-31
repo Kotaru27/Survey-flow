@@ -41,7 +41,9 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
     if(options.some(isOn))continue;
     const counts={yes:0,no:0};
     for(const slide of pageModel.slides)for(const e of slide.querySelectorAll('[role="radio"],input[type="radio"]'))if(isOn(e)){const value=response(e);if(value==='yes'||value==='no')counts[value]++}
-    const wanted=counts.yes<=counts.no?yes[0]:no[0];
+    // Establish both responses early, then vary subsequent cards without a
+    // fixed alternating pattern.
+    const wanted=counts.yes+counts.no===0?(rnd(2)?yes[0]:no[0]):counts.yes===0?yes[0]:counts.no===0?no[0]:(rnd(2)?yes[0]:no[0]);
     if(isAvoid(q.key,label(wanted))){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'mix-conflicts-with-memory',question:q.key});continue}
     if(fireChoice(wanted)){const answer=label(wanted);selected.push(answer);pairs.push({question:q.key,option:qkey(answer)});pickedTrail.push(qkey(q.key)+'\u0000'+qkey(answer));acts.push('carousel-mix');acted++}
     else{INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'carousel-selection-unverified',question:q.key})}
