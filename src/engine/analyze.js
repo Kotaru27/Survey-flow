@@ -88,9 +88,35 @@ function buildQuestions(box,includeHidden){
   txtList=textInputs.filter(vis);
   rangeList=ranges.filter(vis);
  }
+ // ARIA card choices may have different decorative wrappers (especially an
+ // image card), so text-derived keys can split one radiogroup into phantom
+ // questions. Group only unnamed ARIA radios with the same explicit group or
+ // question owner. Keep separately identified groups and matrix rows distinct.
+ const radioOwners=new Map();
+ for(const e of choice){
+  if(!e.matches?.('[role="radio"]')||e.getAttribute('name'))continue;
+  const owner=e.closest('[role="radiogroup"]')||e.closest('.cf-question,.question,.question-container,fieldset,[data-question]');
+  if(!owner)continue;
+  if(!radioOwners.has(owner))radioOwners.set(owner,[]);
+  radioOwners.get(owner).push(e);
+ }
+ const structuralKey=new Map();
+ for(const [owner,els] of radioOwners){
+  if(els.length<2)continue;
+  // Explicit nested groups and rows carry independent answer requirements.
+  if(els.some(e=>e.closest('[role="row"],tr,[data-row]')))continue;
+  if(!owner.matches('[role="radiogroup"]')&&els.some(e=>e.closest('[role="radiogroup"]')))continue;
+  if(splitRows(els))continue;
+  for(const e of els)structuralKey.set(e,owner);
+ }
  const groups=new Map();
- for(const e of choice){const b=baseKey(e);if(!groups.has(b))groups.set(b,[]);groups.get(b).push(e)}
- for(const [base,els] of groups){
+ for(const e of choice){const b=structuralKey.get(e)||baseKey(e);if(!groups.has(b))groups.set(b,[]);groups.get(b).push(e)}
+ const seenGroupBases=new Map();
+ for(const [identity,els] of groups){
+  const rawBase=typeof identity==='string'?identity:baseKey(els[0]);
+  const occurrence=seenGroupBases.get(rawBase)||0;
+  seenGroupBases.set(rawBase,occurrence+1);
+  const base=occurrence?rawBase+' #group'+occurrence:rawBase;
   const sp=splitRows(els);
   const buckets=new Map();
   els.forEach((e,i)=>{const k=sp?sp[i]:'';if(!buckets.has(k))buckets.set(k,[]);buckets.get(k).push(e)});
