@@ -32,6 +32,10 @@ with sync_playwright() as p:
   assert len(d['questions'])==2 and all(q['n']==2 for q in d['questions']),d
   assert pg.locator('[role=radio][aria-checked=true]').count()==2,d
  run('distinct-radio-groups-remain-separate','''<div class="question"><h3>Two separate questions</h3><div role="radiogroup"><div role="radio" aria-checked="false" tabindex="0" onclick="choose(this)">A</div><div role="radio" aria-checked="false" tabindex="0" onclick="choose(this)">B</div></div><div role="radiogroup"><div role="radio" aria-checked="false" tabindex="0" onclick="choose(this)">C</div><div role="radio" aria-checked="false" tabindex="0" onclick="choose(this)">D</div></div></div><button id="next">Next</button><script>function choose(e){e.closest('[role=radiogroup]').querySelectorAll('[role=radio]').forEach(x=>x.setAttribute('aria-checked','false'));e.setAttribute('aria-checked','true')}</script>''',distinctGroups)
+ def separateUnanswered(pg,d):
+  assert len(d['questions'])==2 and d['unanswered']>=1,d
+  assert not pg.locator('#next').get_attribute('data-clicked'),d
+ run('separate-unanswered-group-blocks-next','''<div class="question"><h3>Two independent selections</h3><div role="radiogroup"><div role="radio" aria-checked="false" tabindex="0" onclick="this.setAttribute('aria-checked','true')">A</div><div role="radio" aria-checked="false" tabindex="0" onclick="this.setAttribute('aria-checked','true')">B</div></div><div role="radiogroup"><div role="radio" aria-checked="false" tabindex="0">C</div><div role="radio" aria-checked="false" tabindex="0">D</div></div></div><button id="next" onclick="this.dataset.clicked='1'">Next</button>''',separateUnanswered)
  def dropdown(pg,d):
   assert pg.locator('select').input_value()!='placeholder' and d['unanswered']==0
  run('rejects-placeholder-nonempty-value','''<div class="question"><h3>Which category?</h3><select name="category" required><option value="placeholder">Please select an option</option><option value="one">First</option><option value="two">Second</option></select></div><button id="next" onclick="this.dataset.clicked=String(Number(this.dataset.clicked||0)+1)">Next</button>''',dropdown)
