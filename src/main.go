@@ -1471,9 +1471,7 @@ func runConsole(root string, cfg AppConfig) {
 			_ = logFile.Close()
 		}
 	}()
-	view.detail("Diagnostics", "data/launcher.log")
-	view.detail("Screenshots", fmt.Sprintf("%s · %s · max %d/run", cfg.Screenshots, strings.ToUpper(cfg.ScreenshotFormat), cfg.MaxScreenshotsPerRun))
-	logLine(logFile, "Survey Autopilot — portable console QA launcher")
+		logLine(logFile, "Survey Autopilot — portable console QA launcher")
 	logLine(logFile, "Application root: %s", root)
 	view.prompt("01   STUDY LINK", "Paste the authorized http:// or https:// testing URL.")
 	u, err := in.ReadString('\n')
@@ -1490,9 +1488,15 @@ func runConsole(root string, cfg AppConfig) {
 		return
 	}
 	mem := openMemory(root, u)
-	view.detail("Study memory", mem.path)
+	if mem.readFailed {
+  view.event("ERROR", rose, "Study memory could not be read; see data/launcher.log.")
+ } else if mem.Surveys[memoryFingerprint(u)] != nil {
+  view.detail("Study memory", "Loaded automatically")
+ } else {
+  view.detail("Study memory", "New study")
+ }
 	total := promptCompletes(in, logFile)
-	view.section("LIVE SESSION", "The current step updates in place; full events remain in the log.")
+	view.section("RUNNING", "")
 	view.detail("Target", fmt.Sprintf("%d completed run(s)", total))
 	view.target = total
 	batch := runBatch(root, u, total, cfg, mem, logFile, nil)

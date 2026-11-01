@@ -19,39 +19,33 @@ func TestSafeConsoleTextDropsTerminalControls(t *testing.T) {
 	}
 }
 
-func TestPlainRendererNoTerminalSequencesAndSummaryTruthful(t *testing.T) {
-	var out bytes.Buffer
-	r := newConsoleRenderer(&out, false)
-	r.header()
-	r.section("LIVE SESSION", "")
-	r.onLog("[003] clicked What would you choose?")
-	r.onLog("Survey navigation requested: https://study.test/?secret=test-token")
-	r.runFinished(1, "needs_review", 0, 2)
-	r.finish(BatchReport{Requested: 2, Completed: 0, StartedAt: "now", FinishedAt: "later"})
-	s := out.String()
-	for _, token := range []string{"SURVEY / AUTOPILOT", "LIVE SESSION", "STEP 003", "needs review", "0 / 2", "Target not reached"} {
-		if !strings.Contains(s, token) {
-			t.Errorf("missing %q in %q", token, s)
-		}
-	}
-	if strings.Contains(s, "\x1b") || strings.Contains(s, "secret=test-token") || strings.Contains(s, "Requested completion count reached") {
-		t.Fatalf("unsafe/incorrect rendering: %q", s)
-	}
+func TestPlainRendererProgressAndOutcomeSummary(t *testing.T) {
+ var out bytes.Buffer
+ r := newConsoleRenderer(&out, false)
+ r.header()
+ r.onLog("[003] clicked Survey progress: 23% Private question")
+ r.onLog("[004] clicked Survey progress: 23% Private question")
+ r.onLog("Survey navigation requested: https://study.test/?secret=test-token")
+ r.onLog("Step 4: red instruction needs review: unmatched")
+ r.runFinished(1, "completed", 1, 2)
+ r.finish(BatchReport{Requested: 2, Completed: 1, Runs: []BatchRun{{Status:"completed"}, {Status:"screenout_or_termination"}, {Status:"quota"}, {Status:"needs_review"}}})
+ s := out.String()
+ for _, token := range []string{"SURVEY / AUTOPILOT", "Survey progress: 23%", "1 / 2", "Completes", "Terminates", "Incompletes", "Target not reached"} {
+  if !strings.Contains(s, token) { t.Errorf("missing %q in %q", token, s) }
+ }
+ complete, terminated, incomplete := outcomeCounts(BatchReport{Runs: []BatchRun{{Status:"completed"}, {Status:"screenout_pattern"}, {Status:"quota"}, {Status:"needs_review"}}})
+ if complete != 1 || terminated != 1 || incomplete != 2 { t.Fatalf("incorrect outcome counts: %d %d %d", complete, terminated, incomplete) }
+ if strings.Count(s, "Survey progress: 23%") != 1 || strings.Contains(s, "Private question") || strings.Contains(s, "needs review") || strings.Contains(s, "\x1b") || strings.Contains(s, "secret=test-token") { t.Fatalf("noisy or unsafe output: %q", s) }
 }
 
-func TestColoredInlineStepAndCriticalWarnings(t *testing.T) {
-	var out bytes.Buffer
-	r := newConsoleRenderer(&out, true)
-	r.onLog("[001] selected Who are you?")
-	r.onLog("[002] next What year?")
-	r.onLog("Step 2: 3 unanswered item(s); stopping for review")
-	s := out.String()
-	if !strings.Contains(s, "\r\x1b[2K") || !strings.Contains(s, "STEP 002") || !strings.Contains(s, "REVIEW") {
-		t.Fatalf("in-place status and warning missing: %q", s)
-	}
-	if strings.Count(s, "\n") != 2 {
-		t.Fatalf("step rewrites emitted extra lines: %q", s)
-	}
+func TestColoredInlineStepAndCriticalErrors(t *testing.T) {
+ var out bytes.Buffer
+ r := newConsoleRenderer(&out, true)
+ r.onLog("[001] selected Survey progress: 10% question")
+ r.onLog("[002] next Survey progress: 20% question")
+ r.onLog("Run 2 failed with validation_failure")
+ s := out.String()
+ if !strings.Contains(s, "\r\x1b[2K") || !strings.Contains(s, "Survey progress: 20%") || !strings.Contains(s, "ERROR") { t.Fatalf("in-place status and error missing: %q", s) }
 }
 
 func TestLogLineAlwaysPreservesFileLog(t *testing.T) {

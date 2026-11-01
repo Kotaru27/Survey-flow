@@ -26,6 +26,8 @@ const (
 	reset = "\x1b[0m"
 )
 
+var surveyPercent = regexp.MustCompile(`(?i)survey progress:\s*(\d{1,3})%`)
+
 var stepLine = regexp.MustCompile(`^\[(\d+)\]\s+(\S+)\s*(.*)$`)
 
 // safeConsoleText prevents HTML/survey-provided strings from injecting terminal
@@ -52,6 +54,7 @@ type consoleRenderer struct {
 	step       int
 	target     int
 	lastAction string
+	lastProgress string
 }
 
 func newConsoleRenderer(out io.Writer, colored bool) *consoleRenderer {
@@ -129,17 +132,16 @@ func (r *consoleRenderer) eventLocked(kind, color, s string) {
 	r.println("  " + r.stylize(muted, stamp) + "  " + r.stylize(color, fmt.Sprintf("%-9s", kind)) + " " + r.stylize(ink, safeConsoleText(s, 53)))
 }
 func (r *consoleRenderer) stepStatus(n int, action, question string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.step = n
-	r.lastAction = action
-	line := "  " + r.stylize(muted, "LIVE") + "  " + r.stylize(mint, fmt.Sprintf("STEP %03d", n)) + "  " + r.stylize(azure, safeConsoleText(action, 18)) + "  " + r.stylize(ink, safeConsoleText(question, 35))
-	if r.colored {
-		_, _ = fmt.Fprint(r.out, "\r\x1b[2K"+line)
-		r.inlineStep = true
-	} else {
-		r.println(line)
-	}
+ r.mu.Lock()
+ defer r.mu.Unlock()
+ r.step = n
+ r.lastAction = action
+ progress := "Running survey"
+ if m := surveyPercent.FindStringSubmatch(question); len(m) == 2 { progress = "Survey progress: " + m[1] + "%" }
+ if !r.colored && progress == r.lastProgress { return }
+ r.lastProgress = progress
+ line := "  " + r.stylize(azure+bold, "● ") + r.stylize(ink, progress)
+ if r.colored { _, _ = fmt.Fprint(r.out, "\r\x1b[2K"+line); r.inlineStep = true } else { r.println(line) }
 }
 func (r *consoleRenderer) progress(done, total int) {
 	r.mu.Lock()
@@ -159,8 +161,11 @@ func (r *consoleRenderer) progress(done, total int) {
 	r.println("  " + r.stylize(mint, bar) + "  " + r.stylize(ink+bold, fmt.Sprintf("%d / %d", done, total)) + r.stylize(muted, " completed"))
 }
 func (r *consoleRenderer) runFinished(n int, status string, done, total int) {
-	r.event("RUN", statusColor(status), fmt.Sprintf("Attempt %d · %s", n, strings.ReplaceAll(status, "_", " ")))
-	r.progress(done, total)
+ r.mu.Lock()
+ r.lastProgress = ""
+ r.endStep()
+ r.mu.Unlock()
+ r.progress(done, total)
 }
 func statusColor(status string) string {
 	switch strings.ToLower(status) {
@@ -172,17 +177,26 @@ func statusColor(status string) string {
 		return rose
 	}
 }
+// Only explicitly identified screenouts are classified as terminations. Quota,
+// errors and unresolved reviews remain incomplete rather than being guessed.
+func outcomeCounts(batch BatchReport) (complete, terminated, incomplete int) {
+ for _, run := range batch.Runs {
+  switch strings.ToLower(strings.TrimSpace(run.Status)) {
+  case "completed": complete++
+  case "screenout_pattern", "screenout_or_termination": terminated++
+  default: incomplete++
+  }
+ }
+ return
+}
 func (r *consoleRenderer) finish(batch BatchReport) {
-	r.section("RUN SUMMARY", "Your diagnostics are preserved in data/launcher.log and reports/.")
-	r.progress(batch.Completed, batch.Requested)
-	r.detail("Attempts", fmt.Sprintf("%d", len(batch.Runs)))
-	r.detail("Started", batch.StartedAt)
-	r.detail("Finished", batch.FinishedAt)
-	if batch.Completed == batch.Requested {
-		r.event("COMPLETE", mint, "Requested completion count reached.")
-	} else {
-		r.event("REVIEW", amber, "Target not reached. Check the run reports for exact outcomes.")
-	}
+ complete, terminated, incomplete := outcomeCounts(batch)
+ r.section("RESULTS", "")
+ r.progress(batch.Completed, batch.Requested)
+ r.detail("Completes", fmt.Sprint(complete))
+ r.detail("Terminates", fmt.Sprint(terminated))
+ r.detail("Incompletes", fmt.Sprint(incomplete))
+ if batch.Completed < batch.Requested { r.event("REVIEW", amber, "Target not reached. See reports for details.") }
 }
 
 // onLog hides noisy internals from the user interface, NOT from the file log.
@@ -214,39 +228,10 @@ func (r *consoleRenderer) onLog(s string) {
 		r.stepStatus(n, act, m[3])
 		return
 	}
-	lower := strings.ToLower(s)
-	switch {
-	case strings.HasPrefix(s, "=== Window"), strings.HasPrefix(s, "=== Continuing"), strings.HasPrefix(s, "=== Run"):
-		r.section("SESSION", safeConsoleText(strings.Trim(s, "= "), 73))
-	case strings.HasPrefix(s, "Window opened"):
-		r.event("BROWSER", azure, "Browser window ready")
-	case strings.HasPrefix(s, "Connected to browser CDP"):
-		r.event("CONNECTED", mint, "Browser communication established")
-	case strings.HasPrefix(s, "Survey navigation requested"):
-		r.event("OPENED", azure, "Survey page requested")
-	case strings.HasPrefix(s, "Attention-check key"):
-		r.event("STUDY", azure, s)
-	case strings.HasPrefix(s, "Target:"):
-		r.event("TARGET", mint, s)
-	case strings.HasPrefix(s, "Plan:"):
-		r.event("PLAN", azure, s)
-	case strings.HasPrefix(s, "Batch finished:"):
-		// finish() prints the accurate batch summary once.
-	case strings.HasPrefix(s, "Run ") && strings.Contains(s, " finished:"):
-		// runFinished() prints the actual count once, after incrementing.
-	case strings.Contains(lower, "attention check") && (strings.Contains(lower, "answered") || strings.Contains(lower, "wanted") || strings.Contains(lower, "none of the options")):
-		col := mint
-		if strings.Contains(lower, "wanted") || strings.Contains(lower, "none of the options") {
-			col = amber
-		}
-		r.event("CHECK", col, s)
-	case strings.Contains(lower, "unanswered item"), strings.Contains(lower, "human verification"), strings.Contains(lower, "stopping for review"), strings.Contains(lower, "red instruction needs review"), strings.Contains(lower, "review needed"), strings.Contains(lower, "not counting as complete"), strings.Contains(lower, "no answer controls mounted"):
-		r.event("REVIEW", amber, s)
-	case strings.Contains(lower, "could not start"), strings.Contains(lower, "connection failed"), strings.Contains(lower, "navigation failed"), strings.Contains(lower, "no tab available"), strings.Contains(lower, "failed with"), strings.Contains(lower, "could not mint"), strings.Contains(lower, "page unreadable"), strings.Contains(lower, "giving up"), strings.Contains(lower, "still rejecting"), strings.Contains(lower, "did not persist"), strings.Contains(lower, "engine returned at"):
-		r.event("ERROR", rose, s)
-	case strings.HasPrefix(s, "Step ") && (strings.Contains(lower, "validation rejected") || strings.Contains(lower, "has not moved") || strings.Contains(lower, "repeated signature")):
-		r.event("NOTICE", amber, s)
-	case strings.HasPrefix(s, "Learned:"):
-		r.event("LEARNED", azure, s)
-	}
+ lower := strings.ToLower(s)
+ // Diagnostics remain in launcher.log; show only failures requiring attention.
+ switch {
+ case strings.Contains(lower, "could not start"), strings.Contains(lower, "connection failed"), strings.Contains(lower, "navigation failed"), strings.Contains(lower, "no tab available"), strings.Contains(lower, "failed with"), strings.Contains(lower, "could not mint"), strings.Contains(lower, "page unreadable"), strings.Contains(lower, "giving up"), strings.Contains(lower, "still rejecting"), strings.Contains(lower, "did not persist"), strings.Contains(lower, "could not save"):
+  r.event("ERROR", rose, s)
+ }
 }
