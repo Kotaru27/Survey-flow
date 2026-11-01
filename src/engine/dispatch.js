@@ -109,7 +109,11 @@ function detectEmo(pool){
  const byRole=leaves.filter(e=>e.getAttribute('draggable')==='true'||String(e.getAttribute&&e.getAttribute('role')||'').toLowerCase()==='slider');
  const byName=leaves.filter(e=>/drag|handle|thumb|knob|grip/i.test(cn(e)));
  const byRange=leaves.filter(e=>e.matches&&e.matches('input[type="range"]'));
- const list=byRole.length?byRole:(byName.length?byName:(byRange.length?byRange:leaves));
+ // Range inputs are the authoritative value-bearing controls of the circle
+ // widget. Its animated drag-icon can temporarily become visible and must not
+ // replace the range merely because it matches the word 'drag'.
+ const circleRanges=byRange.filter(e=>e.closest?.('.sliders-container .answer-container'));
+ const list=circleRanges.length?circleRanges:(byRole.length?byRole:(byName.length?byName:(byRange.length?byRange:leaves)));
  if(!list.length)return null;
  return {kind:'emo_resonance',handles:list,hasAdvance:false,total:list.length,answered:0,done:false};
 }

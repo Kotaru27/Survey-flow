@@ -136,15 +136,21 @@ if(!completion&&!termination&&pageModel){
       }
       return v;
      };
+     const diagnostics=ix=>{
+      const group=groups[ix],selected=group?[...group.querySelectorAll('[role="radio"][aria-checked="true"],input[type="radio"]:checked')]:[];
+      const input=boxes[ix]?.querySelector('input[type="range"]');
+      const raw=selected.length===1?String(selected[0].getAttribute('aria-label')||selected[0].value||'').match(/(?:^|\s)(-?\d+(?:\.\d+)?)\s*$/):null;
+      return {prompts:boxes.length,groups:groups.length,index:ix,selected:selected.length,slider:input?Number(input.value):null,stored:raw?Number(raw[1]):null};
+     };
      const used=[];let invalid=index<0;
      for(let k=0;k<boxes.length;k++)if(k!==index&&/(?:^|\s)answered(?:\s|$)/i.test(String(boxes[k].className||''))){
       const value=readValue(boxes[k],k);if(value===null)invalid=true;else used.push(value);
      }
      if(new Set(used).size!==used.length)invalid=true;
-     if(invalid){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-prior-values-unverified-or-repeated'});continue}
+     if(invalid){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-prior-values-unverified-or-repeated',state:diagnostics(index)});continue}
      if(answeredByBox()){
       const got=readValue(box,index);
-      if(got===null||used.includes(got)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-answer-unverified-or-repeated'});continue}
+      if(got===null||used.includes(got)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-answer-unverified-or-repeated',state:diagnostics(index)});continue}
       markSel(h);recordEmo(h,got/100);i++;continue;
      }
      const min=Number(h.min||0),max=Number(h.max||100),step=Number(h.step||1);
@@ -157,7 +163,7 @@ if(!completion&&!termination&&pageModel){
      h.dispatchEvent(new Event('input',{bubbles:true}));h.dispatchEvent(new Event('change',{bubbles:true}));
      await new Promise(resolve=>setTimeout(resolve,40));
      const got=readValue(box,index);
-     if(got===null||got!==want||used.includes(got)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-score-not-confirmed'});continue}
+     if(got===null||got!==want||used.includes(got)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-score-not-confirmed',state:diagnostics(index)});continue}
      markSel(h);recordEmo(h,got/100);acts.push('circle-score');acted++;i++;continue;
     }
     if(isOn(h)){i++;continue}

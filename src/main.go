@@ -104,7 +104,7 @@ type StepReport struct {
 	Accordion    map[string]any `json:"accordion,omitempty"`
 	Instructions map[string]any `json:"instructions,omitempty"`
 }
-const buildID = "circle-values-20261101-c"
+const buildID = "circle-slider-20261101-d"
 
 type RunReport struct {
 	Build string `json:"build"`
