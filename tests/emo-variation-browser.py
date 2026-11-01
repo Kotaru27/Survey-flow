@@ -31,7 +31,7 @@ with sync_playwright() as p:
  page.set_content(html);page.evaluate('window.reject=true');d=page.evaluate(engine)
  assert d['unanswered']>0 and page.locator('body').get_attribute('data-done') is None and page.locator('.answer-container.answered').count()==0,d
  print('PASS rejected circle update blocks navigation')
- page.set_content(html);page.evaluate('''() => {const x=[...document.querySelectorAll('.slider')];for(let i=0;i<2;i++){x[i].value='50';x[i].dispatchEvent(new Event('input',{bubbles:true}));}document.querySelectorAll('.answer-container')[0].classList.replace('visible','hidden');document.querySelectorAll('.answer-container')[2].classList.replace('hidden','visible');delete window.__apNavIntent}''');d=page.evaluate(engine)
+ page.set_content(html);page.evaluate('''() => {window.reject=false; window.__apEmoPending=[]; const x=[...document.querySelectorAll('.slider')];for(let i=0;i<2;i++){x[i].value='50';x[i].dispatchEvent(new Event('input',{bubbles:true}));}document.querySelectorAll('.answer-container')[0].classList.replace('visible','hidden');document.querySelectorAll('.answer-container')[2].classList.replace('hidden','visible');delete window.__apNavIntent}''');d=page.evaluate(engine)
  assert d['unanswered']>0 and d['instructions']['blocked']>0 and page.locator('.answer-container.answered').count()==2,d
  print('PASS repeated prior scores block navigation')
  b.close()
