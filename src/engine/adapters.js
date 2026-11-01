@@ -315,6 +315,7 @@ for(const tq of questions.filter(x=>x.owner==='text')){
   const zeroCellGrids=()=>{
    const byBrand=new Map();
    for(const g of document.querySelectorAll('[role="radiogroup"][aria-required="true"]')){
+    if(pageModel?.kind==='emo_resonance'&&pageModel.box?.contains(g))continue;
     // A grid of logos is still a grid, but when the container is an attention check the
     // grid code must keep its hands off it: the key answers it, not the filler.
     const gq={key:qkey(String(g.id||'grid')),text:txt(g),els:g.firstElementChild?[g.firstElementChild]:[]};
@@ -332,7 +333,7 @@ for(const tq of questions.filter(x=>x.owner==='text')){
    }
    return byBrand;
   };
-  const zeroGrids=pageModel?.kind==='emo_resonance'?new Map():zeroCellGrids();
+  const zeroGrids=zeroCellGrids();
   window.__apZeroLeft=zeroGrids.size;
   if(zeroGrids.size){
    const brand=[...zeroGrids.keys()][0];
@@ -531,8 +532,8 @@ let c=(qt+' '+questionText(s)).toLowerCase();
  }}
  // Native slider values have a browser default, which does not mean a user
  // answered the question. Move the slider and dispatch input/change explicitly.
- if(acted<MAXACT && !gridInterrupted && !(pageModel&&pageModel.kind==='emo_resonance')){
-  for(const rq of questions.filter(x=>x.owner==='range')){
+ if(acted<MAXACT && !gridInterrupted){
+  for(const rq of questions.filter(x=>x.owner==='range'&&!(pageModel?.kind==='emo_resonance'&&x.els.some(e=>pageModel.handles.includes(e))))){
    const el=rq.els[0];
    if(!el||!vis(el)||el.disabled||el.readOnly||qAnswered(rq))continue;
    const lo=Number.isFinite(Number(el.min))&&el.min!==''?Number(el.min):0;

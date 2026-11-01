@@ -86,7 +86,12 @@ if(!completion&&!termination){
  // Once every brand, card or slide is placed, a control the plain scanner still counts
  // is the widget's own decoration (a hidden radio behind the board), not a question:
  // holding Next on those ended a run whose scale was already full.
- if(pageModel&&WIDGET_MODELS.has(pageModel.kind)&&modelLeft===0)unanswered=0;
+ if(pageModel&&WIDGET_MODELS.has(pageModel.kind)&&modelLeft===0){
+  // The circle widget owns only its own range controls. Other visible
+  // questions on the page still need an answer before navigation.
+  if(pageModel.kind==='emo_resonance')unanswered=questions.filter(x=>qOpen(x)&&!x.els.every(e=>pageModel.handles.includes(e))).length;
+  else unanswered=0;
+ }
 }
 // Ratings a widget committed in an earlier pass belong to this page's answer set: a widget
 // answers one item per pass, and the pass that rated the last one is the pass that

@@ -34,4 +34,13 @@ with sync_playwright() as p:
  page.set_content(html);page.evaluate('''() => {window.reject=false; window.__apEmoPending=[]; const x=[...document.querySelectorAll('.slider')];for(let i=0;i<2;i++){x[i].value='50';x[i].dispatchEvent(new Event('input',{bubbles:true}));}document.querySelectorAll('.answer-container')[0].classList.replace('visible','hidden');document.querySelectorAll('.answer-container')[2].classList.replace('hidden','visible');delete window.__apNavIntent}''');d=page.evaluate(engine)
  assert d['unanswered']>0 and d['instructions']['blocked']>0 and page.locator('.answer-container.answered').count()==2,d
  print('PASS repeated prior scores block navigation')
+ # A common class name or the phrase "scale from" is not a circle widget.
+ page.set_content('''<div class="question answer-container"><h3>Rate this on a scale from 0 to 10</h3><input type="range" min="0" max="10" value="5"></div><div class="question"><h3>Choose one</h3><label><input type="radio" name="choice">Alpha</label><label><input type="radio" name="choice">Beta</label></div><button id="next" onclick="this.dataset.clicked='1'">Next</button>''');page.evaluate('delete window.__apNavIntent');d=page.evaluate(engine)
+ assert d['questionType']!='emo_resonance' and page.locator('input[type=radio]:checked').count()==1 and page.locator('input[type=range]').get_attribute('data-ap-selected')=='1' and page.locator('#next').get_attribute('data-clicked')=='1',d
+ print('PASS ordinary scale and radio remain ordinary questions')
+ # An unrelated unanswered control must not be masked by a completed circle.
+ mixed=html.replace('<button class="fake-next-button"', '<div class="question"><h3>Pick another answer</h3><div role="radiogroup"><div role="radio" aria-checked="false" tabindex="0">No-op A</div><div role="radio" aria-checked="false" tabindex="0">No-op B</div></div></div><button class="fake-next-button"')
+ page.set_content(mixed);page.evaluate('window.reject=false; delete window.__apNavIntent');d=page.evaluate(engine)
+ assert d['questionType']=='emo_resonance' and d['unanswered']>0 and page.locator('.answer-container.answered').count()==1 and page.locator('.answer-container.visible').count()==1,d
+ print('PASS circle does not bypass a separate unanswered question')
  b.close()

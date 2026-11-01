@@ -95,8 +95,12 @@ function detectEmo(pool){
  // this scale" one: the wording changes, the boxes do not. Cards that belong to the
  // scale are not sliders, though, and are never treated as one.
  if(pool.some(e=>/timeline-item|ui-draggable|scale-item|brand-item|drag-item/i.test(cn(e))&&vis(e)&&e.getBoundingClientRect().width>=40))return null;
- const shaped=/(move|drag)\s+your\s+(circle|slider)|circle[^.]{0,60}represent|move your circle|show how you feel about|distance between|line representing a scale|scale from/i.test(lower);
- if(!shaped&&!document.querySelector('[class*=sliders-container i],[class*=answer-container i]'))return null;
+ // Generic answer containers and ordinary "scale from" prompts also occur on
+ // basic questions. A hidden widget elsewhere on the page is not evidence of
+ // an active circle question.
+ const shaped=/(move|drag)\s+your\s+(circle|slider)|circle[^.]{0,60}represent|move your circle|show how you feel about|distance between|line representing a scale/i.test(lower);
+ const circleWidget=[...document.querySelectorAll('.sliders-container')].find(e=>vis(e)&&[...e.querySelectorAll('.answer-container input[type="range"]')].some(vis));
+ if(!shaped&&!circleWidget)return null;
  const handles=pool.filter(e=>/slider|handle|knob|thumb|dot|circle|bubble|drag/i.test(cn(e))||e.getAttribute('role')==='slider'||e.getAttribute('draggable')==='true'||(e.matches&&e.matches('input[type="range"]')));
  if(!handles.length)return null;
  // The page wraps the slider and the brand disc in containers whose own class also
@@ -115,7 +119,8 @@ function detectEmo(pool){
  const circleRanges=byRange.filter(e=>e.closest?.('.sliders-container .answer-container'));
  const list=circleRanges.length?circleRanges:(byRole.length?byRole:(byName.length?byName:(byRange.length?byRange:leaves)));
  if(!list.length)return null;
- return {kind:'emo_resonance',handles:list,hasAdvance:false,total:list.length,answered:0,done:false};
+ const box=(circleWidget||list[0])?.closest?.('.cf-question,.question,.question-container,fieldset,[data-question]')||circleWidget||null;
+ return {kind:'emo_resonance',box,handles:list,hasAdvance:false,total:list.length,answered:0,done:false};
 }
 function boxGroups(box,includeHidden){
  if(!box||!box.querySelectorAll)return {total:0,answered:0};
