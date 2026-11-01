@@ -51,6 +51,16 @@ for(const tq of questions.filter(x=>x.owner==='text')){
    if(q.owner==='text'||q.owner==='select')continue;
    const qtext=rhLocalText(q);
    const localHits=rhRulesMatching(qtext).filter(r=>rhRuleApplies(r,qtext)&&rhImageMatch(r,q));
+   // Some themes expose an internal title separately from the visible prompt.
+   // Use the containing question as a fallback only for these exact, verified
+   // multi-choice defaults and only when it owns one choice group.
+   if(q.owner==='check'){
+    const owner=q.els[0]?.closest?.('.cf-question,.question,.question-container,fieldset,[data-question]');
+    if(owner&&questions.filter(x=>(x.owner==='check'||x.owner==='radio')&&x.els.some(e=>owner.contains(e))).length===1){
+     const localText=norm(owner.textContent||'');
+     for(const rule of rhRulesMatching(localText))if(rule.kind==='multi_exact'&&!localHits.includes(rule))localHits.push(rule);
+    }
+   }
    // A colored instruction applies only to its own question. Never apply a single
    // red sentence to every radio group on a multi-question page.
    const instruction=redInstructionFor(q);
@@ -194,6 +204,7 @@ for(const tq of questions.filter(x=>x.owner==='text')){
     RH_LOG.push({q:qkey(qtext.slice(0,60)),did:'AMBIGUOUS-RULE-NOT-GUESSED',text:norm(qtext).slice(0,140),options:opts0(q)});
     rhDiag(q.key,'ambiguous-not-guessed',{text:qtext.slice(0,140),options:opts0(q)});
     q.noGuess=true;
+    if(localList.some(r=>r.kind==='multi_exact')){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'known-multi-check-ambiguous',question:q.key})}
     continue;
    }
    const own=localList[0]||rhRuleFor(q,qtext);
@@ -216,6 +227,7 @@ for(const tq of questions.filter(x=>x.owner==='text')){
     RH_LOG.push({q:qkey(q.key),did:'NO-OPTIONS-DO-NOT-GUESS',text:norm(qtext).slice(0,160),via:via});
     rhDiag(q.key,'rule-matched-but-no-options-read',{text:qtext.slice(0,140),via:via});
     q.noGuess=true;
+    if(own?.kind==='multi_exact'){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'known-multi-check-options-unreadable',question:q.key})}
     continue;
    }
    const rule=own||rhRuleForCheck(q,qtext);
@@ -243,6 +255,24 @@ for(const tq of questions.filter(x=>x.owner==='text')){
     rhDiag(q.key,'looks-like-a-check-but-no-rule',{text:qtext.slice(0,160),options:opts.map(o=>String(o.label||o.code)).slice(0,10)});
     q.noGuess=true;
     continue;
+   }
+   if(rule.kind==='multi_exact'){
+    q.noGuess=true;
+    const normAnswer=x=>norm(x).toLocaleLowerCase();
+    const wanted=(Array.isArray(rule.answers)?rule.answers:[]).map(normAnswer);
+    const forbidden=(Array.isArray(rule.never)?rule.never:[]).map(normAnswer);
+    const labels=opts.map(o=>normAnswer(o.label));
+    const expected=wanted.concat(forbidden);
+    const exact=q.owner==='check'&&wanted.length>0&&forbidden.length>0&&new Set(expected).size===expected.length&&labels.length===expected.length&&expected.every(x=>labels.filter(y=>y===x).length===1);
+    if(!exact){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'known-multi-check-options-mismatch',question:q.key});continue}
+    let ok=true;
+    for(const o of opts.filter(o=>forbidden.includes(normAnswer(o.label))&&isOn(o.el))){fire(o.el);unmarkSel(o.el);if(isOn(o.el)){ok=false;break}}
+    if(ok)for(const o of opts.filter(o=>wanted.includes(normAnswer(o.label))&&!isOn(o.el))){
+     if(!fireChoice(o.el)||!isOn(o.el)){ok=false;break}
+     selected.push(o.label);pairs.push({question:q.key,option:qkey(o.label)});pickedTrail.push(qkey(q.key)+'\u0000'+qkey(o.label));acted++;
+    }
+    if(!ok||opts.some(o=>forbidden.includes(normAnswer(o.label))&&isOn(o.el))||opts.some(o=>wanted.includes(normAnswer(o.label))&&!isOn(o.el))){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'known-multi-check-unverified',question:q.key});continue}
+    acts.push('attention-check');RH_LOG.push({q:qkey(q.key),did:'answered-multi-check',count:wanted.length});continue;
    }
    // A trap list on the rule being answered from, plus any standalone trap list that covers
    // this wording: both keep their options off the table.

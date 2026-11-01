@@ -959,11 +959,27 @@ func readEmbeddedRedHerring(path string) []byte {
 
 // The embedded key and optional external keys remain isolated by study.
 func readRedHerring(root, surveyLink string) []map[string]any {
+	var global []map[string]any
 	if path, err := os.Executable(); err == nil {
-		if result := parseRedHerring(readEmbeddedRedHerring(path), surveyLink); len(result) > 0 { return result }
+		b := readEmbeddedRedHerring(path)
+		global = parseEmbeddedGlobalChecks(b)
+		if result := parseRedHerring(b, surveyLink); len(result) > 0 { return append(result, global...) }
 	}
 	b, _ := os.ReadFile(filepath.Join(root, "config", "red-herring.json"))
-	return parseRedHerring(b, surveyLink)
+	return append(parseRedHerring(b, surveyLink), global...)
+}
+
+// Only the executable's own narrowly described multi-choice defaults are
+// allowed across studies. External configuration remains study-scoped.
+func parseEmbeddedGlobalChecks(b []byte) []map[string]any {
+	var doc struct { GlobalRules []map[string]any `json:"globalRules"` }
+	if json.Unmarshal(stripBOM(b), &doc)!=nil { return nil }
+	var out []map[string]any
+	for _,r:=range doc.GlobalRules {
+		prompt,_:=r["contains"].(string);safe,sok:=r["answers"].([]any);bad,bok:=r["never"].([]any)
+		if r["kind"]=="multi_exact" && r["strict"]==true && len(strings.TrimSpace(prompt))>=40 && sok && bok && len(safe)>0 && len(bad)>0 { out=append(out,r) }
+	}
+	return out
 }
 
 func parseRedHerring(b []byte, surveyLink string) []map[string]any {

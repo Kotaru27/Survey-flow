@@ -26,6 +26,13 @@ func TestEmbeddedStudyKey(t *testing.T) {
 	if readEmbeddedRedHerring(path) != nil { t.Fatal("invalid footer accepted") }
 }
 
+func TestEmbeddedGlobalChecksRequireNarrowMultiRules(t *testing.T) {
+	b:=[]byte(`{"studyUrl":"https://survey.example.test/one","rules":[{"contains":"local rule"}],"globalRules":[{"contains":"This synthetic verification prompt is deliberately longer than forty characters.","kind":"multi_exact","strict":true,"answers":["Alpha"],"never":["Beta"]},{"contains":"short","kind":"multi_exact","strict":true,"answers":["X"],"never":["Y"]}]}`)
+	if len(parseEmbeddedGlobalChecks(b))!=1 { t.Fatal("expected one narrow embedded global rule") }
+	if len(parseRedHerring(b,"https://survey.example.test/other"))!=0 { t.Fatal("study-specific rules leaked to another link") }
+	if len(parseRedHerring(b,"https://survey.example.test/one"))!=1 { t.Fatal("study-specific rules were lost") }
+}
+
 // repoRoot is the application root as it sits next to this package: src/ is the module,
 // config/ and data/ are one level up.
 func repoRoot(t *testing.T) string {

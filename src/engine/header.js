@@ -206,7 +206,7 @@ const rhOptions=(q,text)=>{
  for(const e of els){
   if(e.disabled)continue;
   if(!vis(e)&&!lenient)continue;
-  if(lenient&&e.getBoundingClientRect&&(()=>{const r=e.getBoundingClientRect();return r.width===0&&r.height===0&&!e.closest('[role="radiogroup"],[role="group"],fieldset')})())continue;
+  if(lenient&&e.getBoundingClientRect&&(()=>{const r=e.getBoundingClientRect();return r.width===0&&r.height===0&&!vis(e)&&!e.closest('[role="radiogroup"],[role="group"],fieldset')})())continue;
   if(!((e.matches&&e.matches('input[type=radio],input[type=checkbox]'))||/^(radio|checkbox|option)$/i.test(String(e.getAttribute&&e.getAttribute('role')||''))||/label/i.test(String(e.className||''))))continue;
   const id=rhIdentity({el:e});
   if(!id)continue;
