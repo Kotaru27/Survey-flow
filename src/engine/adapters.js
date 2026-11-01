@@ -332,7 +332,7 @@ for(const tq of questions.filter(x=>x.owner==='text')){
    }
    return byBrand;
   };
-  const zeroGrids=zeroCellGrids();
+  const zeroGrids=pageModel?.kind==='emo_resonance'?new Map():zeroCellGrids();
   window.__apZeroLeft=zeroGrids.size;
   if(zeroGrids.size){
    const brand=[...zeroGrids.keys()][0];

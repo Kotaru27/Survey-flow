@@ -96,7 +96,7 @@ if(!completion&&!termination&&pageModel){
   // answer behind at all.
   const emoFrac=b=>{try{const v=Number(b&&b.getAttribute('data-ap-frac'));return v>0?v:0}catch{return 0}};
   const recordEmo=(h,frac)=>{
-   const pct=Math.round(frac*100);
+   const pct=h.matches?.('input[type="range"]')?Number(h.value):Math.round(frac*100);
    const qt=(stableQuestion(trackOf(h))||q||'emo resonance').slice(0,200);
    selected.push(pct+'%');
    pairs.push({question:qkey(qt),option:qkey(String(pct))});
@@ -110,12 +110,57 @@ if(!completion&&!termination&&pageModel){
   for(const h of m.handles){
    if(acted>=MAXACT)break;
    if(!h||!vis(h))continue;
-   if(isOn(h)){i++;continue}
    const box=(h.closest?h.closest('[class*=answer-container i],[class*=sliders-container i],[class*=emo i]'):null)||trackOf(h);
 // Only the survey's own state says the brand was rated: the box it marks "answered".
     // The circle's position is read relative to that box, so a scroll or a re-layout -
     // which move box and handle together - can never read as the survey answering.
     const answeredByBox=()=>{try{return !!(box&&(/\banswered\b/i.test(String(box.className||''))||box.getAttribute('data-answered')==='1'))}catch{return false}};
+    // A range-based circle widget stores one numeric scale value per prompt.
+    // Inspect all committed rows (including hidden previous prompts), not just
+    // our intended drag distance, before selecting the next unused scale value.
+    const sliderList=h.matches?.('input[type="range"]')&&box?.closest?.('.sliders-container');
+    if(sliderList&&box?.matches?.('.answer-container')){
+     const boxes=[...sliderList.querySelectorAll('.answer-container')];
+     const index=boxes.indexOf(box),scope=sliderList.closest('.cf-question__content')||sliderList.parentElement;
+     const groups=scope?[...scope.querySelectorAll('[role="radiogroup"]')]:[];
+     const readValue=(b,ix)=>{
+      const input=b?.querySelector('input[type="range"]');
+      if(!input||!/(?:^|\s)answered(?:\s|$)/i.test(String(b.className||'')))return null;
+      const v=Number(input.value);if(!Number.isFinite(v))return null;
+      if(groups.length){
+       if(groups.length!==boxes.length)return null;
+       const group=groups[ix],chosen=[...group.querySelectorAll('[role="radio"][aria-checked="true"],input[type="radio"]:checked')];
+       if(chosen.length!==1)return null;
+       const e=chosen[0],raw=String(e.getAttribute('aria-label')||e.value||'').match(/(?:^|\s)(-?\d+(?:\.\d+)?)\s*$/);
+       if(!raw||Number(raw[1])!==v)return null;
+      }
+      return v;
+     };
+     const used=[];let invalid=index<0;
+     for(let k=0;k<boxes.length;k++)if(k!==index&&/(?:^|\s)answered(?:\s|$)/i.test(String(boxes[k].className||''))){
+      const value=readValue(boxes[k],k);if(value===null)invalid=true;else used.push(value);
+     }
+     if(new Set(used).size!==used.length)invalid=true;
+     if(invalid){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-prior-values-unverified-or-repeated'});continue}
+     if(answeredByBox()){
+      const got=readValue(box,index);
+      if(got===null||used.includes(got)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-answer-unverified-or-repeated'});continue}
+      markSel(h);recordEmo(h,got/100);i++;continue;
+     }
+     const min=Number(h.min||0),max=Number(h.max||100),step=Number(h.step||1);
+     if(!Number.isFinite(min)||!Number.isFinite(max)||!Number.isFinite(step)||step<=0||max<min||((max-min)/step)>1000){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-scale-unsupported'});continue}
+     const choices=[];for(let n=0;n<=Math.floor((max-min)/step+1e-9);n++){const v=Number((min+n*step).toFixed(8));if(!used.includes(v))choices.push(v)}
+     if(!choices.length){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-no-distinct-score'});continue}
+     const want=choices[rnd(choices.length)];
+     const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
+     if(setter)setter.call(h,String(want));else h.value=String(want);
+     h.dispatchEvent(new Event('input',{bubbles:true}));h.dispatchEvent(new Event('change',{bubbles:true}));
+     await new Promise(resolve=>setTimeout(resolve,40));
+     const got=readValue(box,index);
+     if(got===null||got!==want||used.includes(got)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-score-not-confirmed'});continue}
+     markSel(h);recordEmo(h,got/100);acts.push('circle-score');acted++;i++;continue;
+    }
+    if(isOn(h)){i++;continue}
     if(answeredByBox()){markSel(h);const f=emoFrac(box);if(f>0)recordEmo(h,f);i++;continue}
     const sig=()=>{try{const hr=h.getBoundingClientRect(),br=box?box.getBoundingClientRect():null;return(box?String(box.getAttribute&&box.getAttribute('style')||'')+'|'+String(box.className||''):'')+'#'+String(h.getAttribute&&h.getAttribute('style')||'')+'#'+(br?Math.round(hr.left-br.left)+','+Math.round(hr.top-br.top):Math.round(hr.left)+','+Math.round(hr.top))}catch{return''}};
     const pos0=sig();

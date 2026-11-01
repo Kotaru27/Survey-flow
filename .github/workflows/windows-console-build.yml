@@ -33,6 +33,7 @@ jobs:
           python tests/performance-browser.py
           python tests/grid-batch-browser.py
           python tests/multi-rh-browser.py
+          python tests/emo-variation-browser.py
       - name: Upload browser test evidence
         if: always()
         uses: actions/upload-artifact@v4
