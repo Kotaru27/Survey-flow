@@ -104,7 +104,10 @@ type StepReport struct {
 	Accordion    map[string]any `json:"accordion,omitempty"`
 	Instructions map[string]any `json:"instructions,omitempty"`
 }
+const buildID = "card-group-20261101-b"
+
 type RunReport struct {
+	Build string `json:"build"`
 	StartedAt        string       `json:"startedAt"`
 	FinishedAt       string       `json:"finishedAt"`
 	Run              int          `json:"run,omitempty"`
@@ -143,6 +146,7 @@ type BatchRun struct {
 	Report     string   `json:"report"`
 }
 type BatchReport struct {
+	Build string `json:"build"`
 	StartedAt    string         `json:"startedAt"`
 	FinishedAt   string         `json:"finishedAt"`
 	URL          string         `json:"url"`
@@ -1462,6 +1466,7 @@ func runConsole(root string, cfg AppConfig) {
 	consoleUI = view
 	defer func() { consoleUI = nil }()
 	view.header()
+	view.detail("Build", buildID)
 	view.section("NEW STUDY", "Configure an authorized QA run. Each study keeps its own memory.")
 	in := bufio.NewReader(os.Stdin)
 	logPath := filepath.Join(root, "data", "launcher.log")
@@ -1519,7 +1524,7 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 	// Every batch numbers its own reports, so one batch's run-1 never overwrites the last
 	// one's and the record of what each attempt chose survives.
 	batchSeq++
-	batch := BatchReport{StartedAt: time.Now().Format(time.RFC3339), URL: u, Requested: total, Windows: windowCount, StatusCounts: map[string]int{}}
+	batch := BatchReport{Build: buildID, StartedAt: time.Now().Format(time.RFC3339), URL: u, Requested: total, Windows: windowCount, StatusCounts: map[string]int{}}
 	logLine(logFile, "Plan: %d complete(s) in %d window(s) of up to %d tab(s); %d ms between completes, %d ms between windows.",
 		total, windowCount, perWindow, cfg.BreathingMs, cfg.WindowPauseMs)
 	runNo := 1
@@ -1545,7 +1550,7 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 		sess, lstatus, lerr := launchBrowser(root, logFile, cfg)
 		if lstatus != "" {
 			logLine(logFile, "Window %d could not start (%s): %v", windowNo, lstatus, lerr)
-			report := RunReport{StartedAt: time.Now().Format(time.RFC3339), Run: runNo, URL: u, Status: lstatus, Persona: readPersona(root), State: AnswerState{Values: map[string]any{}, SelectedLabels: []string{}}}
+			report := RunReport{Build: buildID, StartedAt: time.Now().Format(time.RFC3339), Run: runNo, URL: u, Status: lstatus, Persona: readPersona(root), State: AnswerState{Values: map[string]any{}, SelectedLabels: []string{}}}
 			if lerr != nil {
 				report.Errors = append(report.Errors, lerr.Error())
 			}
@@ -1652,13 +1657,13 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 	reentryID, reentryNumber, reentryErr := nextReentryID(root, persona)
 	if reentryErr != nil {
 		logLine(logFile, "Could not mint a test ID: %v", reentryErr)
-		report := RunReport{StartedAt: time.Now().Format(time.RFC3339), Run: runNo, URL: u, Status: "reentry_id_error", Persona: persona, ReentryID: "", State: AnswerState{Values: map[string]any{}, SelectedLabels: []string{}}}
+		report := RunReport{Build: buildID, StartedAt: time.Now().Format(time.RFC3339), Run: runNo, URL: u, Status: "reentry_id_error", Persona: persona, ReentryID: "", State: AnswerState{Values: map[string]any{}, SelectedLabels: []string{}}}
 		report.Errors = append(report.Errors, reentryErr.Error())
 		saveReport(root, report)
 		return report
 	}
 	persona.ReentryID = reentryID
-	report := RunReport{StartedAt: time.Now().Format(time.RFC3339), Run: runNo, URL: u, Status: "running", Persona: persona, ReentryID: persona.ReentryID, State: AnswerState{Values: map[string]any{}, SelectedLabels: []string{}}}
+	report := RunReport{Build: buildID, StartedAt: time.Now().Format(time.RFC3339), Run: runNo, URL: u, Status: "running", Persona: persona, ReentryID: persona.ReentryID, State: AnswerState{Values: map[string]any{}, SelectedLabels: []string{}}}
 	logLine(logFile, "Reentry template: %s", persona.ReentryTemplate)
 	logLine(logFile, "Sequence slot: %d", reentryNumber)
 	logLine(logFile, "Synthetic test respondent reentry ID: %s", persona.ReentryID)

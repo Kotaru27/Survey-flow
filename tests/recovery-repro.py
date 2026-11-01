@@ -43,6 +43,11 @@ with sync_playwright() as p:
  cards=''.join(card.format(i=i,content=c) for i,c in enumerate(imgs+['Other answer','Unsure']))
  shape="""<div class="cf-question cf-question--single" id="cqFake"><div id="cqFake_text" class="cf-question__text">Which would you prefer?</div><div id="cqFake_instruction" class="cf-question__instruction">Choose one answer</div><div id="cqFake_content" class="cf-question__content"><div class="cf-list cf-list--narrow" role="radiogroup" aria-required="true">"""+cards+"""</div></div></div><button id="next" onclick="this.dataset.clicked=String(Number(this.dataset.clicked||0)+1)">Next</button><script>function choose(e){document.querySelectorAll('[role=radio]').forEach(x=>x.setAttribute('aria-checked','false'));e.setAttribute('aria-checked','true')}</script>"""
  run('observed-structural-card-shape',shape,realShape)
+ def rowsOfCards(pg,d):
+  assert len(d['questions'])==1 and d['questions'][0]['n']==4,d
+  assert pg.locator('[role=radio][aria-checked=true]').count()==1,d
+  assert d['unanswered']==0 and pg.locator('#next').get_attribute('data-clicked')=='1',d
+ run('one-radio-group-with-visual-rows','''<div class="question"><h3>Choose one</h3><div role="radiogroup"><div class="row"><div role="radio" tabindex="0" aria-checked="false" onclick="choose(this)">A</div><div role="radio" tabindex="0" aria-checked="false" onclick="choose(this)">B</div></div><div class="row"><div role="radio" tabindex="0" aria-checked="false" onclick="choose(this)">C</div><div role="radio" tabindex="0" aria-checked="false" onclick="choose(this)">D</div></div></div></div><button id="next" onclick="this.dataset.clicked='1'">Next</button><script>function choose(e){document.querySelectorAll('[role=radio]').forEach(x=>x.setAttribute('aria-checked','false'));e.setAttribute('aria-checked','true')}</script>''',rowsOfCards)
  def separateUnanswered(pg,d):
   assert len(d['questions'])==2 and d['unanswered']>=1,d
   assert not pg.locator('#next').get_attribute('data-clicked'),d

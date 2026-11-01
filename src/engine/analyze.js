@@ -37,6 +37,10 @@ const baseKey=e=>{let k=baseCache.get(e);if(k===undefined){k=e.getAttribute('nam
 // the Next button got pressed with unanswered questions on screen.
 function splitRows(els){
  if(els.length<4)return null;
+ // A radiogroup is an explicit single-choice boundary, even when its cards
+ // are arranged in visual rows. Do not reinterpret those wrappers as matrix rows.
+ const explicit=els[0]?.closest?.('[role="radiogroup"]');
+ if(explicit&&els.every(e=>e.closest?.('[role="radiogroup"]')===explicit))return null;
  // Categories inside an accordion are sections of one choice question, not matrix rows.
  if(typeof ACCORDIONS!=='undefined'&&ACCORDIONS.some(a=>a.panel&&a.panel.contains(els[0])))return null;
  let level=els.map(e=>e.parentElement);
@@ -104,9 +108,11 @@ function buildQuestions(box,includeHidden){
  for(const [owner,els] of radioOwners){
   if(els.length<2)continue;
   // Explicit nested groups and rows carry independent answer requirements.
-  if(els.some(e=>e.closest('[role="row"],tr,[data-row]')))continue;
-  if(!owner.matches('[role="radiogroup"]')&&els.some(e=>e.closest('[role="radiogroup"]')))continue;
-  if(splitRows(els))continue;
+  if(!owner.matches('[role="radiogroup"]')){
+   if(els.some(e=>e.closest('[role="row"],tr,[data-row]')))continue;
+   if(els.some(e=>e.closest('[role="radiogroup"]')))continue;
+   if(splitRows(els))continue;
+  }
   for(const e of els)structuralKey.set(e,owner);
  }
  const groups=new Map();
