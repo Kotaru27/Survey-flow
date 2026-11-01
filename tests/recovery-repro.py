@@ -32,6 +32,17 @@ with sync_playwright() as p:
   assert len(d['questions'])==2 and all(q['n']==2 for q in d['questions']),d
   assert pg.locator('[role=radio][aria-checked=true]').count()==2,d
  run('distinct-radio-groups-remain-separate','''<div class="question"><h3>Two separate questions</h3><div role="radiogroup"><div role="radio" aria-checked="false" tabindex="0" onclick="choose(this)">A</div><div role="radio" aria-checked="false" tabindex="0" onclick="choose(this)">B</div></div><div role="radiogroup"><div role="radio" aria-checked="false" tabindex="0" onclick="choose(this)">C</div><div role="radio" aria-checked="false" tabindex="0" onclick="choose(this)">D</div></div></div><button id="next">Next</button><script>function choose(e){e.closest('[role=radiogroup]').querySelectorAll('[role=radio]').forEach(x=>x.setAttribute('aria-checked','false'));e.setAttribute('aria-checked','true')}</script>''',distinctGroups)
+ # Mirrors the actual observed hierarchy: IDs on the question, individual
+ # answer wrappers and control labels; images hide text in descendant spans.
+ def realShape(pg,d):
+  assert len(d['questions'])==1 and d['questions'][0]['n']==5,d
+  assert pg.locator('[role=radio][aria-checked=true]').count()==1,d
+  assert d['unanswered']==0 and pg.locator('#next').get_attribute('data-clicked')=='1',d
+ card="""<div class="cf-list__item"><div class="cf-button-answer" id="cqFake_{i}"><div id="cqFake_{i}_control" class="cf-button cf-button-answer__button" role="radio" aria-checked="false" tabindex="0" aria-labelledby="cqFake_{i}_text" onclick="choose(this)"><div class="cf-button-answer__text" id="cqFake_{i}_text">{content}</div></div></div></div>"""
+ imgs=[f'<center><img width="50" height="30" alt="Synthetic item {i}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="><span style="display:none">Synthetic item {i}</span></center>' for i in range(3)]
+ cards=''.join(card.format(i=i,content=c) for i,c in enumerate(imgs+['Other answer','Unsure']))
+ shape="""<div class="cf-question cf-question--single" id="cqFake"><div id="cqFake_text" class="cf-question__text">Which would you prefer?</div><div id="cqFake_instruction" class="cf-question__instruction">Choose one answer</div><div id="cqFake_content" class="cf-question__content"><div class="cf-list cf-list--narrow" role="radiogroup" aria-required="true">"""+cards+"""</div></div></div><button id="next" onclick="this.dataset.clicked=String(Number(this.dataset.clicked||0)+1)">Next</button><script>function choose(e){document.querySelectorAll('[role=radio]').forEach(x=>x.setAttribute('aria-checked','false'));e.setAttribute('aria-checked','true')}</script>"""
+ run('observed-structural-card-shape',shape,realShape)
  def separateUnanswered(pg,d):
   assert len(d['questions'])==2 and d['unanswered']>=1,d
   assert not pg.locator('#next').get_attribute('data-clicked'),d
