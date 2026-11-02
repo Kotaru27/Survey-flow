@@ -27,6 +27,10 @@ type consoleRenderer struct {
  result string
  started, lastDraw time.Time
  width func() int
+ parallel bool
+ rows int
+ workerViews map[int]*workerView
+ attempts, screenouts, quotas, failures int
 }
 func newConsoleRenderer(out io.Writer, colored bool)*consoleRenderer{return &consoleRenderer{out:out,colored:colored,percent:-1,width:consoleWidth}}
 func(r *consoleRenderer) stylize(c,s string) string {if r.colored{return c+s+reset};return s}
@@ -40,7 +44,7 @@ func(r *consoleRenderer) startBatch(total int,visible bool){r.mu.Lock();defer r.
 func(r *consoleRenderer) startRun(n,completed int){r.mu.Lock();defer r.mu.Unlock();r.run=n;r.completed=completed;r.percent=0;r.tick=0;r.running=true;r.finished=false;r.result="";r.drawLocked(true)}
 func(r *consoleRenderer) setSurveyProgress(v float64){r.mu.Lock();defer r.mu.Unlock();if !r.running{return};if v>=0&&v<=100 {r.percent=int(v)} else {r.percent=-1};r.tick++;r.drawLocked(false)}
 func(r *consoleRenderer) drawLocked(force bool){
- if !r.colored{return};if !force&&time.Since(r.lastDraw)<200*time.Millisecond{return};r.lastDraw=time.Now()
+ if r.parallel { r.drawWorkersLocked(force); return }; if !r.colored{return};if !force&&time.Since(r.lastDraw)<200*time.Millisecond{return};r.lastDraw=time.Now()
  width:=r.width();if width<=0 {width=80};if width<16{width=16}
  mode:="BG";if r.visible{mode="VISIBLE"}; state:=fmt.Sprintf("Survey %d · %s",r.run,mode);if r.run==0{state="Preparing"}
  pct:="--";bar:="";if r.percent>=0{pct=fmt.Sprintf("%d%%",r.percent)}
@@ -55,5 +59,5 @@ func statusColor(status string) string {if status=="completed"{return mint};retu
 func outcomeCounts(batch BatchReport)(complete,terminated,incomplete int){for _,run:=range batch.Runs{switch strings.ToLower(strings.TrimSpace(run.Status)){case "completed":complete++;case "screenout_pattern","screenout_or_termination":terminated++;default:incomplete++}};return}
 func(r *consoleRenderer) finish(batch BatchReport){r.mu.Lock();defer r.mu.Unlock();complete,terminated,incomplete:=outcomeCounts(batch);if r.colored {_,_=fmt.Fprintln(r.out)};r.active=false;r.println(fmt.Sprintf("  Completed %d / %d  ·  Screenouts %d  ·  Other %d",complete,batch.Requested,terminated,incomplete));if complete<batch.Requested{r.println("  Target not reached. See reports for details.")}}
 func(r *consoleRenderer) onLog(s string){
- if strings.HasPrefix(s,"[") {r.mu.Lock();defer r.mu.Unlock();if r.running&&r.percent==0{r.percent=-1};r.tick++;r.drawLocked(false)}
+ if r.parallel {return}; if strings.HasPrefix(s,"[") {r.mu.Lock();defer r.mu.Unlock();if r.running&&r.percent==0{r.percent=-1};r.tick++;r.drawLocked(false)}
 }
