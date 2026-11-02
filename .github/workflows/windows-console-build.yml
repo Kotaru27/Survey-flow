@@ -81,6 +81,12 @@ jobs:
           go build -trimpath -ldflags '-s -w' -o release/SurveyAutopilot.exe ./src
           if ($LASTEXITCODE -ne 0) { throw 'Windows console build failed' }
           ./scripts/embed-icon.ps1 -Executable release/SurveyAutopilot.exe
+          $output = @('invalid', '') | & ./release/SurveyAutopilot.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Executable launch failed' }
+          $text = $output -join "`n"
+          if ($text -notmatch 'SURVEY AUTOPILOT' -or $text -notmatch 'Invalid link') { throw 'Unexpected executable smoke output' }
+          if ($text -match 'grid-relation|Build version|compiler') { throw 'Technical build information visible' }
+          Write-Host 'PASS executable console launch and clean setup output'
           Copy-Item -Recurse config release/config
           Copy-Item README.md, SETUP.txt, QUESTION_TYPES.md, QA_REPORT.md release/
           Compress-Archive -Path release/* -DestinationPath SurveyAutopilot-Recovery-Console.zip -Force
