@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+ "os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -1218,7 +1219,9 @@ const maxCompletes = 50
 // per step fills a disk), and one Chrome process per complete keeps the laptop pinned, so
 // both are budgeted here.
 type AppConfig struct {
-	Workers int `json:"workers"` // experimental; one worker is the safe default
+	Workers int `json:"workers"` // zero selects a conservative available-memory limit
+ Stop <-chan os.Signal `json:"-"`
+ memoryProbe func()(uint64,bool)
 	Headless                bool   `json:"-"` // selected from the input URL
 	MaxAttempts             int    `json:"maxAttempts"` // 0 uses the existing per-completion limit
 	Screenshots             string `json:"screenshots"`             // all | key | none
@@ -1242,7 +1245,7 @@ func stripBOM(b []byte) []byte {
 
 func readAppConfig(root string) AppConfig {
 	c := AppConfig{
-		Workers: 1, Screenshots: "none", ScreenshotFormat: "jpg", ScreenshotQuality: 60,
+		Workers: 0, Screenshots: "none", ScreenshotFormat: "jpg", ScreenshotQuality: 60,
 		ScreenshotRetentionDays: 7, MaxScreenshotsPerRun: 0,
 		CompletesPerWindow: 5, BreathingMs: 60, WindowPauseMs: 1200, Incognito: true,
 		BrowserMode: "auto",
@@ -1267,7 +1270,7 @@ func readAppConfig(root string) AppConfig {
 	if c.ScreenshotRetentionDays < 0 {
 		c.ScreenshotRetentionDays = 0
 	}
-	if c.Workers < 1 { c.Workers = 1 }; if c.Workers > 4 { c.Workers = 4 }
+	if c.Workers < 0 { c.Workers = 0 }; if c.Workers > 4 { c.Workers = 4 }
 	if c.MaxAttempts < 0 {
 		c.MaxAttempts = 0
 	}
@@ -1525,7 +1528,12 @@ func runConsole(root string, cfg AppConfig) {
   view.detail("Study memory", "New study")
  }
 	total := promptCompletes(in, logFile)
-	view.startBatch(total, visible)
+ if cfg.Workers == 0 { cfg.Workers=automaticWorkerLimit() }
+ if visible {cfg.Workers=1}
+ if total<cfg.Workers {cfg.Workers=total}
+ view.detail("Workers",fmt.Sprintf("%d active slots",cfg.Workers))
+ if cfg.Workers>1 {stop:=make(chan os.Signal,1);signal.Notify(stop,os.Interrupt);defer signal.Stop(stop);cfg.Stop=stop;view.detail("Stop","Ctrl+C stops new attempts and lets active surveys finish")}
+ view.startBatch(total, visible)
 	batch := runBatch(root, u, total, cfg, mem, logFile, nil)
 	view.finish(batch)
 	view.prompt("ALL DONE", "Press Enter to close the console. Your reports are saved.")

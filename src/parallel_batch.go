@@ -23,8 +23,13 @@ func runParallelBatch(root,u string,total,workers int,cfg AppConfig,mem *MemoryS
  results:=make(chan workerResult,workers)
  free:=make(chan int,workers);for i:=1;i<=workers;i++{free<-i}
  active,next:=0,1
+ stopCh:=cfg.Stop;stopping:=false
  for {
-  for active<workers && next<=capAttempts && batch.Completed+active<total {
+  select {case <-stopCh: stopping=true;stopCh=nil;logLine(logFile,"Stop requested; finishing active surveys.");default:}
+  limit:=workers
+  probe:=availablePhysicalMemory;if cfg.memoryProbe!=nil{probe=cfg.memoryProbe}
+  if available,ok:=probe();ok&&memoryWorkerCapacity(available,ok)<limit{limit=memoryWorkerCapacity(available,ok)}
+  for !stopping && active<limit && next<=capAttempts && batch.Completed+active<total {
    w:=<-free; n:=next;next++;active++
    if consoleUI!=nil {consoleUI.workerStarted(w,n)}
    go func(worker,run int){
@@ -37,7 +42,9 @@ func runParallelBatch(root,u string,total,workers int,cfg AppConfig,mem *MemoryS
    }(w,n)
   }
   if active==0 {break}
-  x:=<-results;active--;free<-x.worker
+  var x workerResult
+  select {case x=<-results: case <-stopCh: stopping=true;stopCh=nil;logLine(logFile,"Stop requested; finishing active surveys.");continue}
+  active--;free<-x.worker
   r:=x.report
   if r.Status=="completed"{batch.Completed++};batch.StatusCounts[r.Status]++
   name:=runReportName(x.run,total);saveReportAs(root,name,r)

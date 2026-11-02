@@ -33,3 +33,11 @@ func TestConcurrentReportWritesKeepValidJSON(t *testing.T) {
  wg.Wait()
  for i:=-1;i<count;i++ {name:="run-report.json";if i>=0{name=fmt.Sprintf("run-%02d.json",i)};b,e:=os.ReadFile(filepath.Join(root,"reports",name));if e!=nil{t.Error(e);continue};var v RunReport;if e=json.Unmarshal(b,&v);e!=nil{t.Errorf("%s: %v",name,e)};if i>=0&&v.Run!=i{t.Errorf("%s has run %d",name,v.Run)}}
 }
+
+func TestParallelStopBeforeScheduling(t *testing.T) {
+ root:=t.TempDir();for _,d:=range []string{"data","reports"}{if err:=os.MkdirAll(filepath.Join(root,d),0700);err!=nil{t.Fatal(err)}}
+ stop:=make(chan os.Signal,1);stop<-os.Interrupt
+ cfg:=AppConfig{Stop:stop,MaxAttempts:5,memoryProbe:func()(uint64,bool){return 16*1024*1024*1024,true}}
+ result:=runParallelBatch(root,"http://example.test/start",2,2,cfg,openMemory(root),nil)
+ if len(result.Runs)!=0||result.Completed!=0{t.Fatalf("stop scheduled work: %+v",result)}
+}

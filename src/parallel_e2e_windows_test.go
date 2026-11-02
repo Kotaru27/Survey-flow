@@ -28,7 +28,7 @@ func TestTwoParallelBrowsersAreIsolated(t *testing.T){
   default:http.NotFound(w,r)
   }
  }));defer srv.Close()
- cfg:=AppConfig{Headless:true,BrowserMode:"external",Incognito:true,Screenshots:"none",MaxAttempts:2}
+ cfg:=AppConfig{Headless:true,BrowserMode:"external",Incognito:true,Screenshots:"none",memoryProbe:func()(uint64,bool){return 16*1024*1024*1024,true},MaxAttempts:2}
  var output bytes.Buffer
  view:=newConsoleRenderer(&output,true);view.width=func()int{return 80};view.startBatch(2,false);consoleUI=view;defer func(){consoleUI=nil}()
  batch:=runParallelBatch(root,srv.URL+"/start",2,2,cfg,openMemory(root,srv.URL+"/start"),nil)
