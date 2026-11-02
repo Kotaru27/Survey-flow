@@ -44,9 +44,10 @@ func TestCloudBrowserRecoveryEndToEnd(t *testing.T) {
  mem:=openMemory(root)
  report:=runComplete(root,server.URL+"/start",persona,mem,nil,1,1,cfg,sess,true)
  mu.Lock();gotChoices:=append([]string(nil),choices...);mu.Unlock()
- var changed bool
- for _,step:=range report.StepsLog {if strings.Contains(step.Action,"validation-changed"){changed=true}}
+ var changed,observed bool
+ for _,step:=range report.StepsLog {if strings.Contains(step.Action,"validation-changed"){changed=true};for _,q:=range step.Questions {values:=map[string]bool{};for _,o:=range q.ObservedOptions{values[o.Value]=true};if values["yes"]&&values["no"]{observed=true}}}
  if !changed {t.Errorf("validation was not recovered: status=%s errors=%v steps=%+v",report.Status,report.Errors,report.StepsLog)}
+ if !observed {t.Error("report did not retain observed synthetic option values")}
  if report.Status!="completed" {t.Errorf("did not reach qualifying end: status=%s errors=%v selections=%+v",report.Status,report.Errors,report.Selections)}
  if len(gotChoices)<2||gotChoices[0]!="male"||gotChoices[1]!="female" {t.Errorf("expected termination on male and retry with female, got %v",gotChoices)}
  rules:=openMemory(root).avoidFor(memoryFingerprint(server.URL+"/start"))

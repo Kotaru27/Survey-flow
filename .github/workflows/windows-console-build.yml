@@ -80,6 +80,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Go regressions
         run: go test ./src -count=1
+      - name: Synthetic log write timing
+        run: go test ./src -run '^TestSyntheticLogWriteTiming$' -count=1 -v
       - name: Full runner synthetic browser end-to-end
         shell: pwsh
         run: |

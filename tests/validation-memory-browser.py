@@ -107,6 +107,14 @@ with sync_playwright() as p:
  setpage(page,italian_separate);d=page.evaluate(script());assert page.locator('#comment').input_value()=='Example',d;assert not page.locator('#opt').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
  print('PASS Italian validation recovery works across separate containers')
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ separate_prevent='''<div class=question><h3>Comments?</h3><textarea id=comment></textarea></div><div class=question><label><input id=opt type=checkbox>Preferisco non rispondere</label></div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
+ setpage(page,separate_prevent);d=page.evaluate(script());assert page.locator('#comment').input_value(),d;assert not page.locator('#opt').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
+ print('PASS adjacent standalone opt-out is paired before validation')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ unrelated_after=separate_prevent.replace('<div class=question><label><input id=opt','<div class=question><h3>Do you consent to sharing?</h3><label><input id=opt')
+ setpage(page,unrelated_after);d=page.evaluate(script());assert page.locator('#comment').input_value(),d;assert page.locator('#opt').is_checked(),d
+ print('PASS adjacent opt-out with its own question stays independent')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
  separate='''<div class=question><h3>Optional question</h3><label><input type=checkbox checked>Prefer not to answer</label></div><div class=question><h3>Another question</h3><textarea id=other></textarea></div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
  setpage(page,separate);d=page.evaluate(script());assert page.get_by_label('Prefer not to answer').is_checked(),d;assert page.locator('#other').input_value(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
  print('PASS unrelated question text does not cancel an opt-out')

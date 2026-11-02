@@ -10,9 +10,13 @@ def step(page,run,markup):
  page.set_content(markup)
  persona={'MultiSelectCount':2,'AnswerMode':'random','qaSeed':'synthetic-browser','qaRun':run,'qaStep':1}
  script=engine.replace('const RAW=PERSONA;','const RAW='+json.dumps(persona)+';').replace('const MEM=MEMORY;','const MEM={};').replace('const answered=__ANSWERED__;','const answered=0;')
- page.evaluate(script)
+ return page.evaluate(script)
 def answer(page,run):
- step(page,run,html)
+ result=step(page,run,html)
+ assert len(result['questions'])==1,result
+ options=result['questions'][0]['observedOptions']
+ assert [(o['position'],o['value']) for o in options]==[(1,'a'),(2,'b'),(3,'c')],options
+ assert sum(1 for o in options if o['selected'])==1,options
  selected=page.locator('input:checked')
  assert selected.count()==1
  return selected.input_value()

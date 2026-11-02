@@ -74,11 +74,15 @@ type AnswerState struct {
 // shared one name and one question text.
 type QuestionState struct {
 	Key  string `json:"key"`
+	FullKey string `json:"fullKey,omitempty"`
 	Type string `json:"type"`
 	N    int    `json:"n"`
 	On   int    `json:"on"`
 	Grid bool   `json:"grid,omitempty"`
+	OptionsTruncated bool `json:"optionsTruncated,omitempty"`
+	ObservedOptions []ObservedOption `json:"observedOptions,omitempty"`
 }
+type ObservedOption struct {Position int `json:"position"`;Label string `json:"label"`;Value string `json:"value,omitempty"`;Disabled bool `json:"disabled,omitempty"`;Selected bool `json:"selected,omitempty"`}
 type StepReport struct {
 	Step          int              `json:"step"`
 	Time          string           `json:"time"`
@@ -1412,7 +1416,6 @@ func logLine(f *os.File, format string, args ...any) {
 	}
 	if f != nil {
 		_, _ = f.WriteString(line)
-		_ = f.Sync()
 	}
 	if uiPush != nil {
 		uiPush(strings.TrimSuffix(line, "\n"))
@@ -1520,6 +1523,7 @@ func runConsole(root string, cfg AppConfig) {
 	logFile, _ := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	defer func() {
 		if logFile != nil {
+			_ = logFile.Sync()
 			_ = logFile.Close()
 		}
 	}()
@@ -1543,7 +1547,9 @@ func runConsole(root string, cfg AppConfig) {
 	}
 	privateRules, privateErr := os.ReadFile(filepath.Join(root,"config","study-key.json"))
 	if privateErr != nil {
-		view.detail("Private study configuration", "Not found")
+		var embedded []byte
+		if path,e:=os.Executable();e==nil {embedded=readEmbeddedRedHerring(path)}
+		if len(embedded)>0 {view.detail("Built-in study checks",fmt.Sprintf("%d study-specific, %d shared",len(parseRedHerring(embedded,u)),len(parseEmbeddedGlobalChecks(embedded))))} else {view.detail("Study checks","No built-in or private configuration found")}
 	} else if !json.Valid(stripBOM(privateRules)) {
 		view.event("ERROR", rose, "Private study configuration is invalid; checks were not loaded.")
 	} else {
@@ -1558,9 +1564,15 @@ func runConsole(root string, cfg AppConfig) {
   view.detail("Study memory", "New study")
  }
 	total := promptCompletes(in, logFile)
- cfg.autoWorkers=cfg.Workers==0 && !visible
+	configuredWorkers:=cfg.Workers
+	cfg.autoWorkers=cfg.Workers==0 && !visible
  cfg.Workers=workerCountForRun(cfg,visible,total)
  view.detail("Workers",fmt.Sprintf("Up to %d slots",cfg.Workers))
+ if cfg.Workers==1 && total>1 {
+  reason:="One slot configured"
+  if visible {reason="Visible mode uses one slot"} else if configuredWorkers==0 {reason="Automatic startup: low or unavailable free RAM"}
+  view.detail("Worker limit",reason)
+ }
  if cfg.Workers>1 {stop:=make(chan os.Signal,1);signal.Notify(stop,os.Interrupt);defer signal.Stop(stop);cfg.Stop=stop;view.detail("Stop","Ctrl+C stops new attempts and lets active surveys finish")}
  view.startBatch(total, visible)
 	batch := runBatch(root, u, total, cfg, mem, logFile, nil)
@@ -2274,7 +2286,9 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 				if !ok {
 					continue
 				}
-				sr.Questions = append(sr.Questions, QuestionState{Key: str(qm["key"]), Type: str(qm["type"]), N: toInt(qm["n"]), On: toInt(qm["on"]), Grid: qm["grid"] == true})
+				question:=QuestionState{Key:str(qm["key"]),FullKey:str(qm["fullKey"]),Type:str(qm["type"]),N:toInt(qm["n"]),On:toInt(qm["on"]),Grid:qm["grid"]==true,OptionsTruncated:qm["optionsTruncated"]==true}
+				for _,o:=range asMaps(qm["observedOptions"]) {question.ObservedOptions=append(question.ObservedOptions,ObservedOption{Position:toInt(o["position"]),Label:str(o["label"]),Value:str(o["value"]),Disabled:o["disabled"]==true,Selected:o["selected"]==true})}
+				sr.Questions = append(sr.Questions,question)
 			}
 		}
 		sr.OpenQuestions = toStrings(m["openQuestions"])

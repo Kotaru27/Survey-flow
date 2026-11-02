@@ -33,7 +33,18 @@ for(const tq of questions.filter(x=>x.owner==='text')){
  const input=tq.els[0],owner=input?.closest?.('.cf-question,.question,.question-container,fieldset,[data-question]');
  if(!owner||!vis(input))continue;
  const texts=questions.filter(x=>x.owner==='text'&&x.els.some(e=>owner.contains(e)&&vis(e)));
- const choices=questions.filter(x=>(x.owner==='check'||x.owner==='radio')&&x.els.length===1&&owner.contains(x.els[0])&&optOutLabel.test(norm(label(x.els[0]))));
+ let choices=questions.filter(x=>(x.owner==='check'||x.owner==='radio')&&x.els.length===1&&owner.contains(x.els[0])&&optOutLabel.test(norm(label(x.els[0]))));
+ // Some survey layouts render the opt-out as a standalone sibling question.
+ // Pair only an immediately adjacent, unambiguous control with no independent
+ // visible prompt; never associate an opt-out belonging to another question.
+ if(choices.length===0){
+  const sibling=owner.nextElementSibling;
+  if(sibling&&!/^(FORM|BODY|HTML)$/.test(sibling.tagName||'')){
+   const possible=questions.filter(x=>(x.owner==='check'||x.owner==='radio')&&x.els.length===1&&sibling.contains(x.els[0])&&optOutLabel.test(norm(label(x.els[0]))));
+   const visibleText=norm(sibling.innerText||'');
+   if(possible.length===1&&visibleText&&visibleText.toLocaleLowerCase()===norm(label(possible[0].els[0])).toLocaleLowerCase()&&questions.filter(x=>x.els.some(e=>sibling.contains(e))).length===1)choices=possible;
+  }
+ }
  if(texts.length!==1||choices.length!==1)continue;
  const cq=choices[0],choice=cq.els[0],instruction=redInstructionFor(cq);
  if(instruction&&!generalSelectionInstruction(instruction.text))continue;
