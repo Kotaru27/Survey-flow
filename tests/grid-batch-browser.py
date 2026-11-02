@@ -54,7 +54,8 @@ with sync_playwright() as p:
  assert all(v>=0 for v in values) and len(set(values))==1 and page.locator('#next').get_attribute('data-clicked')=='yes',(values,d)
  print('PASS red grid consistency instruction and navigation')
  page.set_content(html(extra='<p>Select the same option for every row</p>'));page.evaluate('delete window.__apNavIntent');d=page.evaluate(engine)
- keys=[x['key'] for x in d['questions'] if x['grid']]
+ # selectedPairs carries the full key; the diagnostic questions list truncates it.
+ keys=[x['question'] for x in d['selectedPairs']]
  assert len(keys)>=2,d
  page.set_content(html(extra='<p>Select the same option for every row</p>'));page.evaluate('delete window.__apNavIntent')
  memory={'avoid':[{'question':keys[1],'option':x} for x in ('Low','Mid','High')]}
