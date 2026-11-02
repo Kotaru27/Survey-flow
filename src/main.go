@@ -3089,10 +3089,15 @@ func toStrings(v any) []string {
 func sameProgress(a, b StepReport) bool {
 	return a.URL == b.URL && a.Question == b.Question && a.Action == b.Action && len(a.Validation) == len(b.Validation)
 }
+// Serializes report file writes made by concurrent workers in this process.
+var reportWriteMu sync.Mutex
+
 func saveReport(root string, r RunReport) {
 	saveReportAs(root, "run-report.json", r)
 }
 func saveReportAs(root, name string, r RunReport) {
+	reportWriteMu.Lock()
+	defer reportWriteMu.Unlock()
 	if r.FinishedAt == "" {
 		r.FinishedAt = time.Now().Format(time.RFC3339)
 	}
@@ -3100,6 +3105,8 @@ func saveReportAs(root, name string, r RunReport) {
 	_ = os.WriteFile(filepath.Join(root, "reports", name), b, 0644)
 }
 func saveBatchReport(root string, b BatchReport) {
+	reportWriteMu.Lock()
+	defer reportWriteMu.Unlock()
 	data, _ := json.MarshalIndent(b, "", "  ")
 	_ = os.WriteFile(filepath.Join(root, "reports", "batch-report.json"), data, 0644)
 }

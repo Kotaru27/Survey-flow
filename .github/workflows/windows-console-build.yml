@@ -22,7 +22,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Concurrent state race checks
-        run: go test -race -tags nowebview2 ./src -run 'TestConcurrentReentryIDsAreUnique|TestLeftSurveyUsesItsOwnOrigin' -count=1
+        run: go test -race -tags nowebview2 ./src -run 'TestConcurrentReentryIDsAreUnique|TestLeftSurveyUsesItsOwnOrigin|TestConcurrentReportWritesKeepValidJSON' -count=1
       - name: Prepare browser
         run: |
           python -m pip install playwright
