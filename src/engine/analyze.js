@@ -511,7 +511,7 @@ function recoverValidatedChoice(){
  if(q.owner==='radio'||q.owner==='check'){
   const available=q.els.filter(e=>vis(e)&&!e.disabled&&!isOn(e)&&!rejected.includes(qkey(label(e)))&&!isAvoid(q.key,label(e)));
   if(!available.length)return {changed:false,reason:'validation-no-alternative'};
-  target=available[0];
+  target=available[rnd(available.length)];
   if(q.owner==='check'){
    fire(hit.el);unmarkSel(hit.el);
    if(isOn(hit.el))return {changed:false,reason:'validation-uncheck-failed'};
@@ -523,7 +523,7 @@ function recoverValidatedChoice(){
   if(rule?.error)return {changed:false,reason:rule.error};
   const possible=[...e.options].filter(o=>!o.disabled&&String(o.value||'')!==''&&!/^(?:please\s+)?(?:select|choose|pick)\b/i.test(norm(txt(o)))&&!rejected.includes(qkey(txt(o)))&&!isAvoid(q.key,txt(o))&&(!rule?.range||(/^\d{1,3}$/.test(norm(txt(o)))&&Number(txt(o))>=rule.range.min&&Number(txt(o))<=rule.range.max)));
   if(!possible.length)return {changed:false,reason:'validation-no-alternative'};
-  target=possible[0];e.value=target.value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));
+  target=possible[rnd(possible.length)];e.value=target.value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));
   ok=String(e.value)!==old&&String(e.value)===String(target.value)&&selectAnswered(e);
   if(ok){const name=norm(txt(target));selected.push(name);pairs.push({question:q.key,option:qkey(name)});pickedTrail.push(qkey(q.key)+'\u0000'+qkey(name));}
  }

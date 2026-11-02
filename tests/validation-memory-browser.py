@@ -21,6 +21,17 @@ with sync_playwright() as p:
  setpage(page,validation);page.locator('#next').click();assert page.locator('#error').is_visible();page.screenshot(path=str(OUT/'01-validation-before.png'))
  d=page.evaluate(script());assert page.get_by_label('Beta').is_checked(),d;assert page.locator('#result').inner_text()=='Accepted: Beta',d;assert page.locator('#next').get_attribute('data-count')=='2',d;page.screenshot(path=str(OUT/'02-validation-after.png'))
  print('PASS validation changed Alpha to Beta and only submitted after change')
+ alternatives=validation.replace('<div class=error id=error hidden>', '<label><input type=radio name=product value=c>Gamma</label><div class=error id=error hidden>')
+ counts={'b':0,'c':0}
+ for run in range(1,41):
+  setpage(page,alternatives);page.evaluate('delete window.__apRejectedValidation; delete window.__apNavIntent');page.locator('#next').click()
+  synthetic=dict(PERSONA,qaSeed='validation-fixture',qaRun=run,qaStep=1)
+  code=ENGINE.replace('const RAW=PERSONA;', 'const RAW='+json.dumps(synthetic)+';').replace('const MEM=MEMORY;', 'const MEM={};').replace('const answered=__ANSWERED__;', 'const answered=0;')
+  d=page.evaluate(code);picked=page.locator('input[name=product]:checked').input_value()
+  assert picked in counts,(picked,d)
+  counts[picked]+=1
+ assert min(counts.values())>0,counts
+ print('PASS validation retry covers both eligible alternatives:',counts)
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
  allowed='''<div class="question"><h3>Choose a synthetic option</h3><label><input type=radio name=pick value=a checked>Alpha</label><label><input type=radio name=pick value=b>Beta</label><label><input type=radio name=pick value=c>Gamma</label><div class=error><ul><li>Please select Beta or Gamma.</li></ul></div></div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
  setpage(page,allowed);d=page.evaluate(script());assert page.get_by_label('Beta').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d;assert 'validation-changed' in d['action'],d
