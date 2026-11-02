@@ -1484,7 +1484,6 @@ func runConsole(root string, cfg AppConfig) {
 	consoleUI = view
 	defer func() { consoleUI = nil }()
 	view.header()
-	view.detail("Build", buildID)
 	view.section("NEW STUDY", "Configure an authorized QA run. Each study keeps its own memory.")
 	in := bufio.NewReader(os.Stdin)
 	logPath := filepath.Join(root, "data", "launcher.log")
@@ -1521,9 +1520,7 @@ func runConsole(root string, cfg AppConfig) {
   view.detail("Study memory", "New study")
  }
 	total := promptCompletes(in, logFile)
-	view.section("RUNNING", "")
-	view.detail("Target", fmt.Sprintf("%d completed run(s)", total))
-	view.target = total
+	view.startBatch(total, visible)
 	batch := runBatch(root, u, total, cfg, mem, logFile, nil)
 	view.finish(batch)
 	view.prompt("ALL DONE", "Press Enter to close the console. Your reports are saved.")
@@ -1592,6 +1589,7 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 			if total > 1 {
 				logLine(logFile, "=== Run %d (pass %d, tab %d) - complete %d of %d wanted, attempt %d of up to %d ===", runNo, windowNo, inWindow+1, batch.Completed+1, total, runNo, attemptCeiling)
 			}
+			if consoleUI != nil { consoleUI.startRun(runNo, batch.Completed) }
 			started := time.Now()
 			report := runComplete(root, u, readPersona(root), mem, logFile, runNo, total, cfg, sess, inWindow == 0)
 			if progress != nil {
@@ -2205,6 +2203,7 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 				mergeStepAnswers(m, extraPairs, extraLabels)
 			}
 		}
+		if consoleUI != nil { if v, ok := m["surveyProgress"].(float64); ok { consoleUI.setSurveyProgress(v) } else { consoleUI.setSurveyProgress(-1) } }
 		sr := StepReport{Step: step, Time: time.Now().Format(time.RFC3339), URL: str(m["url"]), Title: str(m["title"]), Question: str(m["question"]), QuestionType: str(m["questionType"]), Action: str(m["action"]), Validation: toStrings(m["validation"])}
 		sr.DurationMS = time.Since(stepStarted).Milliseconds()
 		sr.NeedsHuman = boolv(m["needsHuman"])
