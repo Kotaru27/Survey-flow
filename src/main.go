@@ -1029,7 +1029,7 @@ func parseRedHerring(b []byte, surveyLink string) []map[string]any {
 }
 
 func readPersona(root string) Persona {
-	p := Persona{Name: "Normal Test Respondent", Gender: "Male", Age: 30, Country: "United Kingdom", City: "London", YesNo: "Yes", Rating: "middle", MultiSelectCount: 4, OpenText: "This is a test response", Number: 30, ReentryID: "", ReentryTemplate: "MT{uid}", ReentryStart: 1, AnswerMode: "random"}
+	p := Persona{Name: "Normal Test Respondent - UK", Gender: "Male", Age: 30, Country: "United Kingdom", City: "London", YesNo: "Yes", Rating: "middle", MultiSelectCount: 4, OpenText: "This is a test response", Number: 30, ReentryID: "", ReentryTemplate: "MT{uid}", ReentryStart: 1, AnswerMode: "persona", VariedPerRun: true}
 	b, e := os.ReadFile(filepath.Join(root, "config", "persona.json"))
 	if e == nil {
 		_ = json.Unmarshal(stripBOM(b), &p)
@@ -1240,7 +1240,7 @@ func readAppConfig(root string) AppConfig {
 	c := AppConfig{
 		Screenshots: "none", ScreenshotFormat: "jpg", ScreenshotQuality: 60,
 		ScreenshotRetentionDays: 7, MaxScreenshotsPerRun: 0,
-		CompletesPerWindow: 5, BreathingMs: 150, WindowPauseMs: 5000, Incognito: true,
+		CompletesPerWindow: 5, BreathingMs: 60, WindowPauseMs: 1200, Incognito: true,
 		BrowserMode: "auto",
 	}
 	if b, err := os.ReadFile(filepath.Join(root, "config", "app.json")); err == nil {

@@ -80,6 +80,7 @@ jobs:
           New-Item -ItemType Directory -Force release | Out-Null
           go build -trimpath -ldflags '-s -w' -o release/SurveyAutopilot.exe ./src
           if ($LASTEXITCODE -ne 0) { throw 'Windows console build failed' }
+          ./scripts/embed-icon.ps1 -Executable release/SurveyAutopilot.exe
           Copy-Item -Recurse config release/config
           Copy-Item README.md, SETUP.txt, QUESTION_TYPES.md, QA_REPORT.md release/
           Compress-Archive -Path release/* -DestinationPath SurveyAutopilot-Recovery-Console.zip -Force
