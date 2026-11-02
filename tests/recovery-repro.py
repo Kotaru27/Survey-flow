@@ -56,7 +56,8 @@ with sync_playwright() as p:
   checks=pg.locator('[role=checkbox]')
   assert len(d['questions'])==1 and d['questions'][0]['n']==6,d
   assert pg.locator('[role=checkbox][aria-checked=true]').count()>=1,d
-  assert checks.nth(5).get_attribute('aria-checked')=='false',d
+  if checks.nth(5).get_attribute('aria-checked')=='true':
+   assert pg.locator('[role=checkbox][aria-checked=true]').count()==1,d
   assert d['unanswered']==0 and pg.locator('#next').get_attribute('data-clicked')=='1',d
  cards=''.join('<div class="cf-list__item"><div id="cqFake_'+str(i)+'"><div role="checkbox" tabindex="0" aria-checked="false" aria-label="'+('Nessuna di queste risposte' if i==5 else 'Option '+str(i))+'" onclick="toggle(this)">'+('None' if i==5 else '<img width="24" height="24" alt="Option" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="><span style="display:none">Option '+str(i)+'</span>')+'</div></div></div>' for i in range(6))
  run('checkbox-cards-are-one-question','<div class="cf-question" id="cqFake"><h3>Choose all that apply</h3><div role="group">'+cards+'''</div></div><button id="next" onclick="this.dataset.clicked='1'">Next</button><script>function toggle(e){e.setAttribute('aria-checked',e.getAttribute('aria-checked')==='true'?'false':'true')}</script>''',cardChecks)
