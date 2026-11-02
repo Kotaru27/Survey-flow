@@ -436,7 +436,8 @@ function recoverValidatedChoice(){
  // A displayed error can explicitly prohibit a selected opt-out after text was
  // entered. Unlike replacing an invalid choice, this only needs a deselection.
  const messageText=norm(valErr.join(' '));
- if(/\b(?:do\s+not|don['’]?t|cannot|can['’]?t)\s+(?:select|choose|tick|check)\b/i.test(messageText)&&/\b(?:text|comment|response|answer|enter(?:ed|ing)?)\b/i.test(messageText)){
+ const prohibitedWithText=(/\b(?:do\s+not|don['’]?t|cannot|can['’]?t)\s+(?:select|choose|tick|check)\b/i.test(messageText)&&/\b(?:text|comment|response|answer|enter(?:ed|ing)?)\b/i.test(messageText))||(/\bnon\s+selezion\w*\b/i.test(messageText)&&/\btesto\b/i.test(messageText));
+ if(prohibitedWithText){
   const hits=[];
   for(const q of questions.filter(q=>q.owner==='check'||(q.owner==='radio'&&q.els.length===1)))for(const e of q.els.filter(isOn)){
    const name=norm(label(e));

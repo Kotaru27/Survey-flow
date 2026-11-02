@@ -81,6 +81,21 @@ with sync_playwright() as p:
  setpage(page,invalid.replace('type=checkbox checked','type=radio checked'));d=page.evaluate(script());assert page.locator('#comment').input_value()=='Example',d;assert not page.locator('#opt').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
  print('PASS negative validation clears a lone radio opt-out')
  page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ italian=optional.replace('Prefer not to answer','Preferisco non rispondere')
+ setpage(page,italian);d=page.evaluate(script());assert page.locator('#comment').input_value(),d;assert not page.locator('#opt').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
+ print('PASS Italian opt-out is exclusive with text before submission')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ setpage(page,italian.replace('id=opt type=checkbox','id=opt type=checkbox checked'));d=page.evaluate(script());assert not page.locator('#comment').input_value(),d;assert page.locator('#opt').is_checked(),d
+ print('PASS Italian preselected opt-out leaves text empty')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ italian_invalid=italian.replace('<textarea id=comment></textarea>','<textarea id=comment>Example</textarea>').replace('id=opt type=checkbox','id=opt type=checkbox checked').replace('<button id=next', '<div role=alert>Dopo aver inserito il testo, non selezioni \'Preferisco non rispondere\'.</div><button id=next')
+ setpage(page,italian_invalid);d=page.evaluate(script());assert page.locator('#comment').input_value()=='Example',d;assert not page.locator('#opt').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
+ print('PASS Italian validation clears opt-out and retries')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ italian_separate=italian_invalid.replace('<label><input id=opt','</div><div class=question><label><input id=opt')
+ setpage(page,italian_separate);d=page.evaluate(script());assert page.locator('#comment').input_value()=='Example',d;assert not page.locator('#opt').is_checked(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
+ print('PASS Italian validation recovery works across separate containers')
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
  separate='''<div class=question><h3>Optional question</h3><label><input type=checkbox checked>Prefer not to answer</label></div><div class=question><h3>Another question</h3><textarea id=other></textarea></div><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button>'''
  setpage(page,separate);d=page.evaluate(script());assert page.get_by_label('Prefer not to answer').is_checked(),d;assert page.locator('#other').input_value(),d;assert page.locator('#next').get_attribute('data-count')=='1',d
  print('PASS unrelated question text does not cancel an opt-out')

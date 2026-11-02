@@ -20,7 +20,7 @@ else if(valErr.length&&(!needMore||validationRecovery.reason==='validation-no-al
 // When an open response and a lone opt-out share the same question, they are
 // alternatives. Do not apply this to ordinary "Other, specify" combinations.
 const pairedOpen=new Set();
-const optOutLabel=/^(?:prefer not to (?:answer|say|respond)|(?:i\s+)?(?:do not|don't|dont)\s+(?:wish|want)\s+to\s+(?:answer|say|respond)|no comment)$/i;
+const optOutLabel=/^(?:prefer not to (?:answer|say|respond)|(?:i\s+)?(?:do not|don't|dont)\s+(?:wish|want)\s+to\s+(?:answer|say|respond)|no comment|preferisco\s+non\s+rispondere)$/i;
 for(const tq of questions.filter(x=>x.owner==='text')){
  const input=tq.els[0],owner=input?.closest?.('.cf-question,.question,.question-container,fieldset,[data-question]');
  if(!owner||!vis(input))continue;
