@@ -1216,6 +1216,7 @@ const maxCompletes = 50
 // both are budgeted here.
 type AppConfig struct {
 	Headless                bool   `json:"-"` // selected from the input URL
+	MaxAttempts             int    `json:"maxAttempts"` // 0 uses the existing per-completion limit
 	Screenshots             string `json:"screenshots"`             // all | key | none
 	ScreenshotFormat        string `json:"screenshotFormat"`        // png | jpg
 	ScreenshotQuality       int    `json:"screenshotQuality"`       // jpeg quality 1-100
@@ -1261,6 +1262,9 @@ func readAppConfig(root string) AppConfig {
 	}
 	if c.ScreenshotRetentionDays < 0 {
 		c.ScreenshotRetentionDays = 0
+	}
+	if c.MaxAttempts < 0 {
+		c.MaxAttempts = 0
 	}
 	if c.CompletesPerWindow < 1 {
 		c.CompletesPerWindow = 1
@@ -1526,6 +1530,14 @@ func runConsole(root string, cfg AppConfig) {
 	_, _ = in.ReadString('\n')
 }
 
+// batchAttemptLimit preserves the qualification target while bounding attempts.
+func batchAttemptLimit(target, configured int) int {
+	if configured > 0 {
+		return configured
+	}
+	return target * maxRunsPerComplete
+}
+
 // runBatch drives the whole job: `total` completes of one link, a browser window per
 // group of them, a report per run. It is the same work the console launcher does,
 // extracted so the desktop window can start it without a terminal prompt.
@@ -1550,10 +1562,7 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 	// the batch keeps launching runs, each on a fresh session with what it has learned,
 	// until it holds that many completes. The attempt ceiling is what stops a study
 	// nothing can pass from running for ever.
-	attemptCeiling := total * maxRunsPerComplete
-	if attemptCeiling < total {
-		attemptCeiling = total
-	}
+	attemptCeiling := batchAttemptLimit(total, cfg.MaxAttempts)
 	logLine(logFile, "Target: %d complete(s); up to %d run(s) will be attempted to reach it.", total, attemptCeiling)
 	logLine(logFile, "Attention-check key: %d rule(s) loaded for this study.", len(readRedHerring(root, u)))
 	for runNo <= attemptCeiling && batch.Completed < total && !abort {

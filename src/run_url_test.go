@@ -17,3 +17,9 @@ func TestParseRunURL(t *testing.T) {
   }
  }
 }
+
+func TestBatchAttemptLimit(t *testing.T) {
+ if got := batchAttemptLimit(50, 0); got != 50 * maxRunsPerComplete { t.Fatalf("default limit = %d", got) }
+ if got := batchAttemptLimit(50, 25); got != 25 { t.Fatalf("configured limit = %d", got) }
+ if got := batchAttemptLimit(50, 75); got != 75 { t.Fatalf("configured limit = %d", got) }
+}

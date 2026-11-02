@@ -4,6 +4,7 @@
   "screenshotQuality": 60,
   "screenshotRetentionDays": 7,
   "maxScreenshotsPerRun": 0,
+  "maxAttempts": 0,
   "completesPerWindow": 5,
   "breathingMs": 60,
   "windowPauseMs": 1200,
