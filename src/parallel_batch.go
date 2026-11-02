@@ -28,7 +28,7 @@ func runParallelBatch(root,u string,total,workers int,cfg AppConfig,mem *MemoryS
   select {case <-stopCh: stopping=true;stopCh=nil;logLine(logFile,"Stop requested; finishing active surveys.");default:}
   limit:=workers
   probe:=availablePhysicalMemory;if cfg.memoryProbe!=nil{probe=cfg.memoryProbe}
-  if available,ok:=probe();ok&&memoryWorkerCapacity(available,ok)<limit{limit=memoryWorkerCapacity(available,ok)}
+  if available,ok:=probe();memoryWorkerCapacity(available,ok)<limit{limit=memoryWorkerCapacity(available,ok)}
   for !stopping && active<limit && next<=capAttempts && batch.Completed+active<total {
    w:=<-free; n:=next;next++;active++
    if consoleUI!=nil {consoleUI.workerStarted(w,n)}
