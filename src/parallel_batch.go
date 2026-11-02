@@ -55,7 +55,7 @@ func runParallelBatch(root,u string,total,workers int,cfg AppConfig,mem *MemoryS
      }}}()
     }
     report:=RunReport{Run:run,Status:status,URL:u,StartedAt:started.Format(time.RFC3339)}
-    if status=="" {report=runCompleteWithProgress(root,u,readPersona(root),mem,logFile,run,total,cfg,sess,true,func(v float64){if consoleUI!=nil{consoleUI.workerProgress(worker,v)}})} else if err!=nil {report.Errors=append(report.Errors,err.Error())}
+    if status=="" {report=runCompleteWithProgress(root,u,readPersonaForRun(root,run),mem,logFile,run,total,cfg,sess,true,func(v float64){if consoleUI!=nil{consoleUI.workerProgress(worker,v)}})} else if err!=nil {report.Errors=append(report.Errors,err.Error())}
     close(sampleStop);sess.stop(logFile,true)
     results<-workerResult{worker,run,started,time.Now(),report}
    }(w,n)

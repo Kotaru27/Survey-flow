@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"embed"
 	"encoding/base64"
 	"encoding/binary"
@@ -11,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	mrand "math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -58,6 +60,9 @@ type Persona struct {
 	ReentryStart     int    `json:"reentryStart"`
 	AnswerMode       string `json:"answerMode"`
 	VariedPerRun     bool   `json:"variedPerRun"`
+	QASeed           string `json:"qaSeed,omitempty"`
+	QARun            int    `json:"qaRun,omitempty"`
+	QAStep           int    `json:"qaStep,omitempty"`
 }
 type AnswerState struct {
 	Values         map[string]any `json:"values"`
@@ -1034,7 +1039,8 @@ func parseRedHerring(b []byte, surveyLink string) []map[string]any {
 	return out
 }
 
-func readPersona(root string) Persona {
+func readPersona(root string) Persona { return readPersonaForRun(root,0) }
+func readPersonaForRun(root string, run int) Persona {
 	p := Persona{Name: "Normal Test Respondent - UK", Gender: "Male", Age: 30, Country: "United Kingdom", City: "London", YesNo: "Yes", Rating: "middle", MultiSelectCount: 4, OpenText: "This is a test response", Number: 30, ReentryID: "", ReentryTemplate: "MT{uid}", ReentryStart: 1, AnswerMode: "persona", VariedPerRun: true}
 	b, e := os.ReadFile(filepath.Join(root, "config", "persona.json"))
 	if e == nil {
@@ -1043,7 +1049,7 @@ func readPersona(root string) Persona {
 	// Persona mode answers consistently inside one run; variedPerRun rolls that
 	// profile again for every run so no two runs submit the same set of answers.
 	if p.VariedPerRun && strings.Contains(strings.ToLower(p.AnswerMode), "persona") {
-		varyPersona(&p)
+		if p.QASeed!="" { h:=sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d",p.QASeed,run)));rng:=mrand.New(mrand.NewSource(int64(binary.LittleEndian.Uint64(h[:8]))));varyPersonaWith(&p,rng.Intn) } else { varyPersona(&p) }
 	}
 	// A free-text answer must never end in a full stop: the trailing period reads as
 	// punctuation the respondent never wrote and makes every open answer look
@@ -1084,25 +1090,27 @@ func pickN(n int) int {
 // rolls a different one. Fields that identify the run - the test ID template, free
 // text, country and name - stay exactly as configured in config/persona.json, and
 // per-survey memory still overrides anything a survey has already rejected.
-func varyPersona(p *Persona) {
+func varyPersona(p *Persona) { varyPersonaWith(p,pickN) }
+func varyPersonaWith(p *Persona, randomN func(int)int) {
+	choose:=func(opts ...string)string{return opts[randomN(len(opts))]}
 	if p.Gender != "" {
-		p.Gender = pickOne("Male", "Female", "Other")
+		p.Gender = choose("Male", "Female", "Other")
 	}
 	if p.Age > 0 {
-		p.Age = 18 + pickN(43)
+		p.Age = 18 + randomN(43)
 	}
 	if p.City != "" {
-		p.City = pickOne("London", "Manchester", "Birmingham", "Leeds", "Bristol", "Sheffield", "Liverpool", "Newcastle", "Cambridge", "Norwich", "Oxford", "York", "Brighton", "Cardiff", "Edinburgh", "Glasgow")
+		p.City = choose("London", "Manchester", "Birmingham", "Leeds", "Bristol", "Sheffield", "Liverpool", "Newcastle", "Cambridge", "Norwich", "Oxford", "York", "Brighton", "Cardiff", "Edinburgh", "Glasgow")
 	}
 	if p.YesNo != "" {
-		p.YesNo = pickOne("Yes", "No")
+		p.YesNo = choose("Yes", "No")
 	}
 	if p.MultiSelectCount > 0 {
 		// A respondent who buys sports nutrition buys several kinds of it. Answering a
 		// "select all that apply" list with one or two boxes is not a person, and on the
 		// studies that cross-check the list against the answers given later it is read
 		// as an inconsistent profile.
-		p.MultiSelectCount = 2 + pickN(5)
+		p.MultiSelectCount = 2 + randomN(5)
 	}
 	p.Number = p.Age
 }
@@ -1626,7 +1634,7 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 			}
 			if consoleUI != nil { consoleUI.startRun(runNo, batch.Completed) }
 			started := time.Now()
-			report := runComplete(root, u, readPersona(root), mem, logFile, runNo, total, cfg, sess, inWindow == 0)
+			report := runComplete(root, u, readPersonaForRun(root,runNo), mem, logFile, runNo, total, cfg, sess, inWindow == 0)
 			if progress != nil {
 				// The window counts completes, not runs: a run that was screened out has
 				// not put one in the hand, and a counter that said otherwise was counting
@@ -1712,6 +1720,7 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
  return runCompleteWithProgress(root,u,persona,mem,logFile,runNo,total,cfg,sess,firstInWindow,func(v float64){if consoleUI!=nil{consoleUI.setSurveyProgress(v)}})
 }
 func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, logFile *os.File, runNo, total int, cfg AppConfig, sess *BrowserSession, firstInWindow bool, update func(float64)) RunReport {
+	persona.QARun=runNo
 	reentryID, reentryNumber, reentryErr := nextReentryID(root, persona)
 	if reentryErr != nil {
 		logLine(logFile, "Could not mint a test ID: %v", reentryErr)
@@ -2051,6 +2060,7 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 			"redHerring": redHerringRules}
 		forceUsed := forceNext
 		forceNext = false // this step spent the forced Next
+		persona.QAStep=step
 		expr := strings.NewReplacer(
 			"PERSONA", mustJSON(persona),
 			"MEMORY", mustJSON(memPayload),

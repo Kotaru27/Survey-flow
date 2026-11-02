@@ -575,7 +575,13 @@ const vis=e=>{if(!e||e.disabled)return false;try{
 const cleanText=e=>{try{const c=e.cloneNode(true);for(const n of c.querySelectorAll('style,script,noscript,template'))n.remove();return norm(c.textContent||'')}catch{return norm(e&&e.textContent||'')}};
 const txt=e=>norm(e?.innerText||cleanText(e)||e?.value||e?.getAttribute?.('aria-label')||e?.getAttribute?.('title')||'');
 const esc=s=>{try{return CSS.escape(s)}catch{return String(s).replace(/[^a-zA-Z0-9_-]/g,'\\$&')}};
-const rnd=n=>{n=Math.max(1,n|0);return Math.floor(Math.random()*n)};
+// Opt-in synthetic QA stream: each run and engine step has its own state.
+// Normal runs continue to use the browser's random source.
+const qaSeed=String(RAW.qaSeed||'');
+let qaState=2166136261;
+if(qaSeed){for(const c of JSON.stringify([qaSeed,RAW.qaRun||0,RAW.qaStep||0])){qaState=Math.imul(qaState^c.charCodeAt(0),16777619)>>>0}if(!qaState)qaState=0x6d2b79f5}
+const qaRandom=()=>{if(!qaSeed)return Math.random();qaState^=qaState<<13;qaState^=qaState>>>17;qaState^=qaState<<5;return (qaState>>>0)/4294967296};
+const rnd=n=>{n=Math.max(1,n|0);return Math.floor(qaRandom()*n)};
 const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=rnd(i+1);const t=a[i];a[i]=a[j];a[j]=t}return a};
 const usePersona=/persona/i.test(String(P.AnswerMode||''));
 const native=[...document.querySelectorAll('input,select,textarea,button,a,[role],[contenteditable="true"],[tabindex]')].filter(vis);

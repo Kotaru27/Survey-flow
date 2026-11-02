@@ -73,6 +73,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/answer-variety.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/seeded-qa.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/navigation-instruction.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Go regressions

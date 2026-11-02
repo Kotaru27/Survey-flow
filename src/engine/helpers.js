@@ -76,8 +76,7 @@ function chooseFromGroup(items,want,kind,qt,key,previousColumn){
  if(pick<0&&want)pick=tryText(want,kind);
  if(pick<0&&usePersona&&kind==='yesno'&&previousColumn===undefined)pick=tryText(P.YesNo,kind);
  if(pick<0){
-  const choices=short.map((e,i)=>({e,i})).filter(x=>previousColumn===undefined||items.indexOf(x.e)!==previousColumn);
-  pick=(choices.length?choices:short.map((e,i)=>({e,i})))[rnd(choices.length||short.length)].i;
+  pick=rnd(short.length);
  }
  const chosen=short[pick];
  const ok=fireChoice(chosen);if(ok){selected.push(label(chosen));pairs.push({question:k,option:qkey(label(chosen))});pickedTrail.push(qkey(k)+'\u0000'+qkey(label(chosen)))}return ok;
