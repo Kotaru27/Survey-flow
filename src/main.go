@@ -1552,7 +1552,7 @@ func runConsole(root string, cfg AppConfig) {
 	total := promptCompletes(in, logFile)
  cfg.autoWorkers=cfg.Workers==0 && !visible
  cfg.Workers=workerCountForRun(cfg,visible,total)
- view.detail("Workers",fmt.Sprintf("%d active slots",cfg.Workers))
+ view.detail("Workers",fmt.Sprintf("Up to %d slots",cfg.Workers))
  if cfg.Workers>1 {stop:=make(chan os.Signal,1);signal.Notify(stop,os.Interrupt);defer signal.Stop(stop);cfg.Stop=stop;view.detail("Stop","Ctrl+C stops new attempts and lets active surveys finish")}
  view.startBatch(total, visible)
 	batch := runBatch(root, u, total, cfg, mem, logFile, nil)
