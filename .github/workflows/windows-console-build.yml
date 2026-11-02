@@ -30,6 +30,7 @@ jobs:
       - name: Synthetic browser fixtures
         run: |
           python tests/browser-fixtures.py
+          python tests/answer-variety-browser.py
           python tests/recovery-repro.py
           python tests/multi-page-journey.py
           python tests/validation-memory-browser.py

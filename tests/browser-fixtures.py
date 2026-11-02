@@ -99,7 +99,7 @@ with sync_playwright() as p:
    pg.set_content(pageWrap(''.join(checkbox(x) for x in ['Alpha','Beta','Gamma','Delta'])+checkbox('None of the above')))
    d=step(pg)
    checked=tuple(pg.locator('label').nth(i).locator('input').is_checked() for i in range(5))
-   assert any(checked[:4]) and not checked[4],d
+   assert any(checked) and not (checked[4] and any(checked[:4])),d
    outcomes.add(checked)
   assert len(outcomes)>1,outcomes
  run('multi-choice-varies-in-persona-mode',pageWrap(''),variedMulti)

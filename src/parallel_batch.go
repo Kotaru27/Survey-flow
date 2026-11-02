@@ -37,6 +37,7 @@ func runParallelBatch(root,u string,total,workers int,cfg AppConfig,mem *MemoryS
    for _,s:=range latest {if !s.ok||time.Since(s.at)>8*time.Second{measured=false};if s.bytes>peak{peak=s.bytes};if s.cpu>cpu{cpu=s.cpu}}
    if len(latest)!=active{measured=false}
    limit=adaptiveWorkerLimit(available,peak,cpu,ok&&measured,workers)
+   if consoleUI!=nil{consoleUI.workerResources(available,cpu,ok&&measured)}
   } else if memoryWorkerCapacity(available,ok)<limit{limit=memoryWorkerCapacity(available,ok)}
   for !stopping && active<limit && next<=capAttempts && batch.Completed+active<total {
    w:=<-free; n:=next;next++;active++

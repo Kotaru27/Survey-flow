@@ -31,6 +31,7 @@ type consoleRenderer struct {
  rows int
  workerViews map[int]*workerView
  attempts, screenouts, quotas, failures int
+ resourceText string
 }
 func newConsoleRenderer(out io.Writer, colored bool)*consoleRenderer{return &consoleRenderer{out:out,colored:colored,percent:-1,width:consoleWidth}}
 func(r *consoleRenderer) stylize(c,s string) string {if r.colored{return c+s+reset};return s}
