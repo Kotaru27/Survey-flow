@@ -1,6 +1,7 @@
 //go:build windows
 package main
 import (
+ "bytes"
  "fmt"
  "net/http"
  "net/http/httptest"
@@ -28,7 +29,10 @@ func TestTwoParallelBrowsersAreIsolated(t *testing.T){
   }
  }));defer srv.Close()
  cfg:=AppConfig{Headless:true,BrowserMode:"external",Incognito:true,Screenshots:"none",MaxAttempts:2}
+ var output bytes.Buffer
+ view:=newConsoleRenderer(&output,true);view.width=func()int{return 80};view.startBatch(2,false);consoleUI=view;defer func(){consoleUI=nil}()
  batch:=runParallelBatch(root,srv.URL+"/start",2,2,cfg,openMemory(root,srv.URL+"/start"),nil)
+ view.mu.Lock();attempts:=view.attempts;view.mu.Unlock();if attempts!=2{t.Fatalf("dashboard recorded %d attempts",attempts)}
  mu.Lock();defer mu.Unlock()
  if batch.Completed!=2||len(batch.Runs)!=2||len(tokens)!=2||len(finished)!=2{t.Fatalf("isolated completions failed: completed=%d runs=%d starts=%d cookies=%d",batch.Completed,len(batch.Runs),starts,len(finished))}
  a,b:=batch.Runs[0],batch.Runs[1];as,_:=time.Parse(time.RFC3339Nano,a.StartedAt);ae,_:=time.Parse(time.RFC3339Nano,a.FinishedAt);bs,_:=time.Parse(time.RFC3339Nano,b.StartedAt);be,_:=time.Parse(time.RFC3339Nano,b.FinishedAt)
