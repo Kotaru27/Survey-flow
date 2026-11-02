@@ -69,6 +69,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/grid-variation.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/answer-variety.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/navigation-instruction.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Go regressions

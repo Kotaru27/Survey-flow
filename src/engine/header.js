@@ -502,8 +502,7 @@ const avoidRules=Array.isArray(MEM&&MEM.avoid)?MEM.avoid:[];
 const avoidExact=new Set();
 for(const a of avoidRules){const k=qkey(a&&a.question),o=qkey(a&&a.option);if(k&&o)avoidExact.add(k+'||'+o)}
 const reopen=new Set((Array.isArray(MEM&&MEM.reopen)?MEM.reopen:[]).map(qkey));
-// What has already completed this survey: those answers are tried first, unless the
-// store has since learned to avoid them.
+// Retain recorded preferences for compatibility with existing study memory.
 const preferMap=new Map();
 for(const k in ((MEM&&MEM.prefer)||{})){const q=qkey(k),o=qkey((MEM.prefer||{})[k]);if(q&&o)preferMap.set(q,o)}
 // Answer sets that already ended a run badly. pickedTrail is what this page has
@@ -519,18 +518,16 @@ const pinMap=new Map();
 for(const q in ((MEM&&MEM.pin)||{}))pinMap.set(qkey(q),qkey((MEM.pin||{})[q]));
 const probeQ=qkey(MEM&&MEM.probeQ||'');
 const probeExcluded=new Set((()=>{const v=String((MEM&&MEM.probeExclude)||'').split(/\s+/).filter(Boolean);return v.map(qkey)})());
-function preferredFor(q){const k=qkey(q);return k&&preferMap.has(k)?preferMap.get(k):''}
-// rank orders the answers of a question: the profile that already worked comes first,
-// a replayed answer keeps the run comparable, an answer the store has a record for is
-// judged on that record, and the answer being probed away is taken off the table.
+function preferredFor(q){const k=qkey(q);return k&&pinMap.has(k)?pinMap.get(k):''}
+// Explicit replay pins remain deterministic. Avoided answers and banned sets remain
+// disfavored, but prior success alone does not make an answer more likely.
 function rankOf(q,o){
  const k=qkey(q),ok=qkey(o);
  if(!k||!ok)return 0;
  let sc=0;
- const row=scoreMap.get(k);
- if(row&&row.has(ok))sc=row.get(ok)*10;
+ // Successful answers are history, not evidence that other valid options are wrong.
+ // An explicitly pinned replay still wins; exclusions and banned combinations remain.
  if(pinMap.get(k)===ok)sc+=25;
- if(preferMap.get(k)===ok)sc+=15;
  if(k===probeQ&&probeExcluded.has(ok))sc-=1000;
  if(isAvoid(k,ok))sc-=1000;
  if(wouldRebuildBanned(k,ok))sc-=1000;
@@ -542,7 +539,6 @@ function bestTier(q,labels,pool){
  for(let i=0;i<pool.length;i++){const v=rankOf(q,labels[i]);sc.push(v);if(v>top)top=v}
  return sc.map((v,i)=>v===top?i:-1).filter(i=>i>=0);
 }
-function preferredFor(q){const k=qkey(q);return k&&preferMap.has(k)?preferMap.get(k):''}
 function wouldRebuildBanned(q,o){
  const qk=qkey(q),ok=qkey(o);
  if(!qk||!ok||!bannedSets.length||!pickedTrail.length)return false;

@@ -1220,6 +1220,7 @@ const maxCompletes = 50
 // both are budgeted here.
 type AppConfig struct {
 	Workers int `json:"workers"` // zero selects a conservative available-memory limit
+ autoWorkers bool
  Stop <-chan os.Signal `json:"-"`
  memoryProbe func()(uint64,bool)
 	Headless                bool   `json:"-"` // selected from the input URL
@@ -1528,6 +1529,7 @@ func runConsole(root string, cfg AppConfig) {
   view.detail("Study memory", "New study")
  }
 	total := promptCompletes(in, logFile)
+ cfg.autoWorkers=cfg.Workers==0 && !visible
  cfg.Workers=workerCountForRun(cfg,visible,total)
  view.detail("Workers",fmt.Sprintf("%d active slots",cfg.Workers))
  if cfg.Workers>1 {stop:=make(chan os.Signal,1);signal.Notify(stop,os.Interrupt);defer signal.Stop(stop);cfg.Stop=stop;view.detail("Stop","Ctrl+C stops new attempts and lets active surveys finish")}

@@ -11,3 +11,15 @@ func TestStartupWorkerSelection(t *testing.T){
  if got:=workerCountForRun(high,true,10);got!=1{t.Errorf("visible mode: %d",got)}
  if got:=workerCountForRun(high,false,1);got!=1{t.Errorf("single target: %d",got)}
 }
+
+func TestAdaptiveWorkerAdmission(t *testing.T){
+ const mb=uint64(1024*1024)
+ tests:=[]struct{available,worker uint64;cpu float64;measured bool;want int}{
+  {4*gibBytes,300*mb,20,true,2},
+  {2*gibBytes+300*mb,300*mb,20,true,1},
+  {4*gibBytes,300*mb,90,true,1},
+  {4*gibBytes,300*mb,20,false,1},
+  {4*gibBytes,0,20,true,1},
+ }
+ for _,tc:=range tests {if got:=adaptiveWorkerLimit(tc.available,tc.worker,tc.cpu,tc.measured,2);got!=tc.want{t.Errorf("admission %+v got %d",tc,got)}}
+}

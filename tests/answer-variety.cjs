@@ -1,0 +1,14 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const h=fs.readFileSync('src/engine/header.js','utf8');
+const code=h.slice(h.indexOf('function preferredFor(q)'),h.indexOf('function wouldRebuildBanned('));
+const ctx={qkey:x=>String(x||'').toLowerCase(),pinMap:new Map(),preferMap:new Map([['q','last']]),scoreMap:new Map([['q',new Map([['last',30]])]]),probeQ:'',probeExcluded:new Set(),isAvoid:()=>false,wouldRebuildBanned:()=>false};
+vm.createContext(ctx);vm.runInContext(code,ctx);
+const opts=['first','middle','last'];
+assert.deepEqual(Array.from(ctx.bestTier('q',opts,opts)),[0,1,2],'past successes must not exclude other valid options');
+assert.equal(ctx.preferredFor('q'),'','past success is not an explicit replay');
+ctx.pinMap.set('q','middle');
+assert.equal(ctx.preferredFor('q'),'middle');
+assert.deepEqual(Array.from(ctx.bestTier('q',opts,opts)),[1],'explicit replay pin must remain deterministic');
+ctx.pinMap.clear();ctx.probeQ='q';ctx.probeExcluded.add('last');
+assert.deepEqual(Array.from(ctx.bestTier('q',opts,opts)),[0,1],'excluded probe answer must not be sampled while alternatives exist');
+console.log('PASS prior-success neutrality, explicit replay and probe exclusion');

@@ -11,6 +11,17 @@ func memoryWorkerLimit(available uint64,ok bool) int {n:=memoryWorkerCapacity(av
 
 func workerCountForRun(c AppConfig,visible bool,total int) int {
  n:=c.Workers
- if n==0 {probe:=availablePhysicalMemory;if c.memoryProbe!=nil{probe=c.memoryProbe};memory,ok:=probe();n=memoryWorkerLimit(memory,ok)}
+ if n==0 {probe:=availablePhysicalMemory;if c.memoryProbe!=nil{probe=c.memoryProbe};memory,ok:=probe();n=1;if ok&&memory>=4*gibBytes{n=2}}
  if visible {n=1};if n<1{n=1};if n>4{n=4};if total>0&&n>total{n=total};return n
+}
+
+// The reserve is kept in available memory, in addition to the estimated cost
+// of a new browser. Failure to measure either metric keeps admission at one.
+func adaptiveWorkerLimit(available, browserBytes uint64, cpuPercent float64, measured bool, maximum int) int {
+ if maximum<2||!measured||browserBytes==0||cpuPercent<0||cpuPercent>85 {return 1}
+ const reserve=2*gibBytes
+ budget:=browserBytes+browserBytes/2
+ if budget<256*1024*1024 {budget=256*1024*1024}
+ if available<=reserve||available-reserve<budget{return 1}
+ return 2 // Raise only after representative laptop benchmarks.
 }

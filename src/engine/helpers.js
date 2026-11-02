@@ -54,10 +54,7 @@ function chooseFromGroup(items,want,kind,qt,key,previousColumn){
  let pool=active.filter(e=>!isAvoid(k,label(e)));
  if(!pool.length){exhausted.add(k);return false}
  const labels=pool.map(label);
- // Everything the store knows about this question narrows the field to its best
- // answers first: the profile that completed, the profile being replayed, and the
- // answers with the better record. Only inside that field do persona and chance apply,
- // and a profile that already failed is never rebuilt here.
+ // Explicit replay pins and known exclusions take precedence over sampling.
  const remembered=preferredFor(k);
  const tier=bestTier(k,labels,pool);
  const short=tier.length? tier.map(i=>pool[i]) : pool;

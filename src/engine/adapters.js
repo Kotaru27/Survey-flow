@@ -379,12 +379,9 @@ for(const tq of questions.filter(x=>x.owner==='text')){
   if(zeroGrids.size){
    const brand=[...zeroGrids.keys()][0];
    for(const opts of zeroGrids.get(brand)){
-    // A cell that says the respondent never bought it, or bought it too long ago, is the
-    // answer a random roll lands on now and then - and on a study that asks what people
-    // bought lately it is a screen-out. Those cells are dropped and the rest are answered
-    // with some variety, never the very first or the very last one.
+    // All displayed scale options are eligible; do not infer eligibility from labels.
     const cellText=o=>String((o.getAttribute&&o.getAttribute('aria-label'))||label(o)||'');
-    const alive=opts.filter(o=>!/\bnever\b|12 months?|not (purchased|bought|used|consumed|in the last)|have not|haven'?t|purchased previously|don'?t know|not applicable|not at all|none of/i.test(cellText(o)));
+    const alive=opts;
     // Every row of the scale is its own question, so the rows are drawn independently -
     // but not blindly: a value another row of this same question already carries is not
     // drawn again, which is what makes the set of ratings look like a person's.
@@ -393,7 +390,7 @@ for(const tq of questions.filter(x=>x.owner==='text')){
     const taken=used.get(qk)||new Set();
     const free=alive.filter(o=>!taken.has(cellText(o)));
     const pool=free.length>1?free:(alive.length>1?alive:opts);
-    const pick=pool[Math.min(pool.length-1,1+rnd(Math.max(1,Math.floor((pool.length-1)*0.7))))];
+    const pick=pool[rnd(pool.length)];
     taken.add(cellText(pick));used.set(qk,taken);
     if(!pick||!fireChoice(pick))continue;
     selected.push(label(pick));
@@ -472,12 +469,11 @@ const context=qt.toLowerCase();
    let cand=active.slice();
   let usable=cand.filter(e=>!isAvoid(qk,label(e)));
   if(!usable.length&&cand.length){exhausted.add(qk);INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'no-safe-alternative',question:qk});continue}
-  // A remembered answer for this question leads the selection, so a survey that has
-  // completed before is submitted the way it completed.
-  const remembered=preferredFor(qk);
+  // Explicit replay pins lead the selection; ordinary prior successes do not.
+  let remembered=preferredFor(qk);
   if(remembered){
    const pick=usable.filter(e=>matchWant([label(e)],remembered,'exact')>=0&&!wouldRebuildBanned(qk,label(e)));
-   if(pick.length)usable=[...pick,...usable.filter(e=>pick.indexOf(e)<0)];
+   if(pick.length)usable=[...pick,...usable.filter(e=>pick.indexOf(e)<0)];else remembered='';
   }
   usable=usable.filter(e=>!wouldRebuildBanned(qk,label(e)));
   if(!usable.length){exhausted.add(qk);INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'no-safe-alternative',question:qk});continue}
@@ -494,9 +490,9 @@ let n;
    if(ACC_SINGLE_CHOICE&&ACCORDIONS.length)n=1;
    if(accordionMore(q))n=Math.min(n,Math.max(1,Math.max(1,Math.min(8,Number(P.MultiSelectCount)||1))-accSelected()));
    if(usable.some(exclusive)){
-    const ordinary=usable.filter(e=>!exclusive(e));
-    usable=ordinary.length?ordinary:[usable.find(exclusive)];
-    n=Math.min(n,usable.length);
+    // Exclusive choices are legitimate scenarios, but cannot coexist with others.
+    if(exclusive(usable[0])){usable=[usable[0]];n=1}
+    else {usable=usable.filter(e=>!exclusive(e));n=Math.min(n,usable.length)}
    }
 let did=false;
    for(const e of usable.slice(0,n)){if(fireChoice(e)){selected.push(label(e));pairs.push({question:qk,option:qkey(label(e))});pickedTrail.push(qk+'\u0000'+qkey(label(e)));did=true}}
@@ -553,7 +549,7 @@ let c=(qt+' '+questionText(s)).toLowerCase();
    const isAge=/\bage\b|\byears? old\b|how old/.test(c);
    let wanted=usePersona?(/gender|sex/.test(c)?P.Gender:isAge?String(P.Age):/country|nationality/.test(c)?P.Country:''):'';
    let o=null;
-   // A select that has taken this survey to the end page keeps that value.
+   // Respect an explicit replay pin before applying persona values or sampling.
    const remembered=preferredFor(qk);
    if(remembered){
     const ri=matchWant(pool.map(txt),remembered,'exact');
