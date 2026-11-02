@@ -33,6 +33,14 @@ func TestEmbeddedGlobalChecksRequireNarrowMultiRules(t *testing.T) {
 	if len(parseRedHerring(b,"https://survey.example.test/one"))!=1 { t.Fatal("study-specific rules were lost") }
 }
 
+func TestPrivateStudyConfiguration(t *testing.T) {
+ root:=t.TempDir();dir:=filepath.Join(root,"config");if err:=os.MkdirAll(dir,0700);err!=nil{t.Fatal(err)}
+ fixture:=`{"studyUrl":"https://survey.example.test/one","rules":[{"contains":"local synthetic rule"}],"globalRules":[{"contains":"This synthetic verification prompt is deliberately longer than forty characters.","kind":"multi_exact","strict":true,"answers":["Alpha"],"never":["Beta"]}]}`
+ if err:=os.WriteFile(filepath.Join(dir,"study-key.json"),[]byte(fixture),0600);err!=nil{t.Fatal(err)}
+ if got:=readRedHerring(root,"https://survey.example.test/one");len(got)!=2{t.Fatalf("matching study: got %d rules, want 2",len(got))}
+ if got:=readRedHerring(root,"https://survey.example.test/other");len(got)!=1{t.Fatalf("different study: got %d rules, want 1 shared rule",len(got))}
+}
+
 // repoRoot is the application root as it sits next to this package: src/ is the module,
 // config/ and data/ are one level up.
 func repoRoot(t *testing.T) string {

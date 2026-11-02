@@ -962,16 +962,22 @@ func readEmbeddedRedHerring(path string) []byte {
 	return b
 }
 
-// The embedded key and optional external keys remain isolated by study.
+// A user-supplied private key overrides the legacy embedded key. Study rules
+// still require their matching study fingerprint; only narrow global checks
+// deliberately included by the owner apply across studies.
 func readRedHerring(root, surveyLink string) []map[string]any {
 	var global []map[string]any
-	if path, err := os.Executable(); err == nil {
-		b := readEmbeddedRedHerring(path)
+	b, err := os.ReadFile(filepath.Join(root, "config", "study-key.json"))
+	if err != nil || !json.Valid(stripBOM(b)) {
+		b = nil
+		if path, e := os.Executable(); e == nil { b = readEmbeddedRedHerring(path) }
+	}
+	if len(b) > 0 {
 		global = parseEmbeddedGlobalChecks(b)
 		if result := parseRedHerring(b, surveyLink); len(result) > 0 { return append(result, global...) }
 	}
-	b, _ := os.ReadFile(filepath.Join(root, "config", "red-herring.json"))
-	return append(parseRedHerring(b, surveyLink), global...)
+	legacy, _ := os.ReadFile(filepath.Join(root, "config", "red-herring.json"))
+	return append(parseRedHerring(legacy, surveyLink), global...)
 }
 
 // Only the executable's own narrowly described multi-choice defaults are
@@ -1455,6 +1461,13 @@ func findCurrentTarget(port int, currentURL, preferID string) (Target, error) {
 func main() {
 	if runtime.GOOS != "windows" {
 		fmt.Println("Windows build only.")
+		return
+	}
+	// Diagnostic deliberately emits only a count, never private rule contents.
+	if len(os.Args)==3 && os.Args[1]=="--verify-study-config" {
+		b,err:=os.ReadFile(filepath.Join(appRoot(),"config","study-key.json"))
+		if err!=nil || !json.Valid(stripBOM(b)) {fmt.Fprintln(os.Stderr,"Private study configuration unavailable or invalid");os.Exit(2)}
+		fmt.Printf("Loaded study checks: %d\n",len(readRedHerring(appRoot(),os.Args[2])))
 		return
 	}
 	// One copy of the app per session: a second launch hands its link to the
