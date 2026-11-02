@@ -476,12 +476,13 @@ func launchBrowser(root string, logFile *os.File, cfg AppConfig) (*BrowserSessio
 	if cfg.Incognito {
 		args = append(args, "--incognito")
 	}
-	// Used only by the cloud QA runner; normal console launches remain visible.
-	if os.Getenv("SURVEY_QA_HEADLESS") == "1" { args = append(args, "--headless=new", "--disable-gpu") }
+	// Console input selects headless mode; the environment flag supports cloud QA.
+	if cfg.Headless || os.Getenv("SURVEY_QA_HEADLESS") == "1" { args = append(args, "--headless=new", "--disable-gpu") }
 	args = append(args, "about:blank")
 	cmd := exec.Command(browser, args...)
 	sess := &BrowserSession{cmd: cmd, port: port, profile: profile, done: make(chan struct{})}
 	if e := cmd.Start(); e != nil {
+		removeProfile(profile)
 		return nil, "browser_error", e
 	}
 	go func() {
@@ -1214,6 +1215,7 @@ const maxCompletes = 50
 // per step fills a disk), and one Chrome process per complete keeps the laptop pinned, so
 // both are budgeted here.
 type AppConfig struct {
+	Headless                bool   `json:"-"` // selected from the input URL
 	Screenshots             string `json:"screenshots"`             // all | key | none
 	ScreenshotFormat        string `json:"screenshotFormat"`        // png | jpg
 	ScreenshotQuality       int    `json:"screenshotQuality"`       // jpeg quality 1-100
@@ -1235,7 +1237,7 @@ func stripBOM(b []byte) []byte {
 
 func readAppConfig(root string) AppConfig {
 	c := AppConfig{
-		Screenshots: "key", ScreenshotFormat: "jpg", ScreenshotQuality: 60,
+		Screenshots: "none", ScreenshotFormat: "jpg", ScreenshotQuality: 60,
 		ScreenshotRetentionDays: 7, MaxScreenshotsPerRun: 0,
 		CompletesPerWindow: 5, BreathingMs: 150, WindowPauseMs: 5000, Incognito: true,
 		BrowserMode: "auto",
@@ -1245,7 +1247,7 @@ func readAppConfig(root string) AppConfig {
 	}
 	c.Screenshots = strings.ToLower(strings.TrimSpace(c.Screenshots))
 	if c.Screenshots != "all" && c.Screenshots != "none" && c.Screenshots != "key" {
-		c.Screenshots = "key"
+		c.Screenshots = "none"
 	}
 	c.ScreenshotFormat = strings.ToLower(strings.TrimSpace(c.ScreenshotFormat))
 	if c.ScreenshotFormat == "jpg" {
@@ -1459,6 +1461,18 @@ func main() {
 	runConsole(root, cfg)
 }
 
+// parseRunURL removes only the explicit trailing visibility marker.
+func parseRunURL(input string) (string, bool, error) {
+ raw := strings.TrimSpace(input)
+ visible := strings.HasSuffix(raw, "---pop")
+ if visible { raw = strings.TrimSuffix(raw, "---pop") }
+ parsed, err := url.Parse(raw)
+ if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+  return "", visible, errors.New("invalid HTTP(S) URL")
+ }
+ return raw, visible, nil
+}
+
 // runConsole is the terminal launcher: read an authorized link and a complete
 // count from stdin, then run the batch under a log file.
 func runConsole(root string, cfg AppConfig) {
@@ -1484,8 +1498,10 @@ func runConsole(root string, cfg AppConfig) {
 		view.event("ERROR", rose, "No link supplied. No run was started.")
 		return
 	}
-	u = strings.TrimSpace(u)
-	if !regexp.MustCompile(`^https?://`).MatchString(u) {
+	var visible bool
+	u, visible, err = parseRunURL(u)
+	cfg.Headless = !visible
+	if err != nil {
 		logLine(logFile, "Invalid URL")
 		view.event("ERROR", rose, "Invalid link; provide a full HTTP(S) URL.")
 		view.prompt("CLOSE", "Press Enter to exit.")
@@ -1558,7 +1574,7 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 			saveReportAs(root, runReportName(runNo, total), report)
 			batch.Runs = append(batch.Runs, BatchRun{Run: runNo, Window: windowNo, Status: report.Status, Report: runReportName(runNo, total), Errors: report.Errors})
 			batch.StatusCounts[report.Status]++
-			sess.stop(logFile, total > 1)
+			sess.stop(logFile, true)
 			abort = true
 			break
 		}
@@ -1617,14 +1633,14 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 			sess.detach()
 			logLine(logFile, "In-window pane handed back after %d attempt(s) in window %d.", inWindow, windowNo)
 		} else if abort {
-			sess.detach()
-			logLine(logFile, "Browser left open for review after an unresolved run.")
+			sess.stop(logFile, true)
+			logLine(logFile, "Browser closed after an unresolved run.")
 		} else if total > 1 {
 			sess.stop(logFile, true)
 			logLine(logFile, "Window %d closed after %d complete(s).", windowNo, inWindow)
 		} else {
-			sess.detach()
-			logLine(logFile, "Browser process is intentionally NOT terminated by the launcher.")
+			sess.stop(logFile, true)
+			logLine(logFile, "Browser closed after the run.")
 		}
 		if !abort && runNo <= attemptCeiling && batch.Completed < total && cfg.WindowPauseMs > 0 {
 			if windowCount <= 1 {
@@ -2821,11 +2837,6 @@ END_RUN:
 		}
 	}
 	report.AvoidRules = mem.avoidCount(memFP)
-	// Always keep one shot of the final page (completed, screenout, stall, ...) unless
-	// this step already produced one or screenshots are disabled.
-	if cfg.Screenshots != "none" && len(report.StepsLog) > 0 && report.StepsLog[len(report.StepsLog)-1].Screenshot == "" {
-		capture(report.Steps)
-	}
 	report.FinishedAt = time.Now().Format(time.RFC3339)
 	saveReport(root, report)
 	logLine(logFile, "Status: %s", report.Status)
