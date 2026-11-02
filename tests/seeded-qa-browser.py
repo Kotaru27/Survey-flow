@@ -6,11 +6,13 @@ root=Path(__file__).resolve().parents[1]
 names=['header','detect','helpers','accordion','analyze','dispatch','adapters','adapters-custom','navigate']
 engine='\n'.join((root/'src'/'engine'/f'{n}.js').read_text() for n in names)
 html='''<style>label{display:block;padding:8px}</style><form><div class="question"><h3>Which product would you choose?</h3><label><input type="radio" name="q" value="a">Alpha</label><label><input type="radio" name="q" value="b">Beta</label><label><input type="radio" name="q" value="c">Gamma</label></div><button type="button" id="next">Next</button></form>'''
-def answer(page,run):
- page.set_content(html)
+def step(page,run,markup):
+ page.set_content(markup)
  persona={'MultiSelectCount':2,'AnswerMode':'random','qaSeed':'synthetic-browser','qaRun':run,'qaStep':1}
  script=engine.replace('const RAW=PERSONA;','const RAW='+json.dumps(persona)+';').replace('const MEM=MEMORY;','const MEM={};').replace('const answered=__ANSWERED__;','const answered=0;')
  page.evaluate(script)
+def answer(page,run):
+ step(page,run,html)
  selected=page.locator('input:checked')
  assert selected.count()==1
  return selected.input_value()
@@ -23,4 +25,18 @@ with sync_playwright() as p:
   if run<=15: assert answer(b,run)==x,('seed mismatch',run)
  assert all(n>=12 for n in counts.values()),counts
  print('PASS seeded synthetic browser choices and separate-session replay:',counts)
+ select='''<style>select{display:block;padding:8px}</style><form><div class="question"><h3>Which category would you choose?</h3><select name="q" required><option value="">Please select</option><option value="a">Alpha</option><option value="b">Beta</option><option value="c">Gamma</option></select></div><button type="button" id="next">Next</button></form>'''
+ dropdown={'a':0,'b':0,'c':0}
+ for run in range(1,91):
+  step(a,run,select);v=a.locator('select').input_value();assert v in dropdown;dropdown[v]+=1
+ assert min(dropdown.values())>0,dropdown
+ print('PASS seeded dropdown option coverage:',dropdown)
+ multi='''<style>label{display:block;padding:8px}</style><form><div class="question"><h3>Which products do you use?</h3><label><input type="checkbox" name="q" value="a">Alpha</label><label><input type="checkbox" name="q" value="b">Beta</label><label><input type="checkbox" name="q" value="c">Gamma</label><label><input type="checkbox" name="q" value="none">None of the above</label></div><button type="button" id="next">Next</button></form>'''
+ multi_counts={'a':0,'b':0,'c':0,'none':0}
+ for run in range(1,91):
+  step(a,run,multi);selected=a.locator('input:checked').evaluate_all('(xs)=>xs.map(x=>x.value)')
+  assert selected and not ('none' in selected and len(selected)>1),selected
+  for v in selected:multi_counts[v]+=1
+ assert min(multi_counts.values())>0,multi_counts
+ print('PASS seeded multi-choice coverage and exclusivity:',multi_counts)
  browser.close()
