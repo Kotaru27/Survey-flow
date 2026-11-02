@@ -6,6 +6,14 @@ let action='';
 // Resolve a named group only when the page exposes a unique matching panel.
 // Comparisons ignore spacing and punctuation, not the group identity.
 const groupKey=s=>String(s||'').toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+// Only accept complete, explicit row-level rules. Unrecognized or compound
+// instructions remain with the existing instruction handler for review.
+function gridRelationRule(text){
+ const t=norm(text||'').replace(/[.!]+$/,'').trim();
+ if(/^(?:please\s+)?(?:select|choose|use)\s+the\s+same\s+(?:option|answer|response)\s+(?:for|in)\s+(?:every|each|all)\s+rows?$/i.test(t))return 'same';
+ if(/^(?:please\s+)?(?:select|choose|use)\s+a\s+different\s+(?:option|answer|response)\s+(?:from|than)\s+the\s+previous\s+row$/i.test(t))return 'different';
+ return '';
+}
 function namedGroupRule(instruction){
  const text=norm(instruction?.text||'').replace(/\batleast\b/ig,'at least');
  const m=text.match(/^(?:please\s+|must\s+)*(?:select|choose|pick|tick|check|mark)\s+(?:at\s*least)\s+(\d{1,2})\s+(.+?)[.!]?$/i);
@@ -64,6 +72,39 @@ for(const tq of questions.filter(x=>x.owner==='text')){
    // A colored instruction applies only to its own question. Never apply a single
    // red sentence to every radio group on a multi-question page.
    const instruction=redInstructionFor(q);
+   // Row relations belong to a single visible grid, not to every question on
+   // the page. Require identical, unique option labels before comparing rows.
+   if(q.grid&&q.owner==='radio'&&!localHits.length){
+    const owner=q.els[0]?.closest?.('.cf-question,.question,.question-container,fieldset,[data-question]');
+    const rows=owner?questions.filter(x=>x.grid&&x.owner==='radio'&&x.els.every(e=>owner.contains(e))):[];
+    const cues=instruction?[instruction.text]:owner?[...owner.querySelectorAll('h1,h2,h3,h4,p,[data-instruction]')].filter(vis).map(e=>norm(e.textContent||'')):[];
+    const rules=[...new Set(cues.map(gridRelationRule).filter(Boolean))];
+    if(rules.length){
+     q.noGuess=true;
+     const opts=x=>x.els.filter(e=>vis(e)&&!e.disabled),names=x=>opts(x).map(e=>qkey(label(e)));
+     const current=names(q),compatible=rows.length>1&&current.length>1&&new Set(current).size===current.length&&rows.every(x=>{const n=names(x);return n.length===current.length&&new Set(n).size===n.length&&n.every(v=>current.includes(v))});
+     if(rules.length!==1||!compatible){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-relation-ambiguous',question:q.key});continue}
+     const chosen=rows.map(x=>opts(x).find(isOn)).filter(Boolean).map(e=>qkey(label(e)));
+     let candidates=opts(q).filter(e=>!isAvoid(q.key,label(e))&&!wouldRebuildBanned(q.key,label(e)));
+     if(rules[0]==='same'){
+      const distinct=[...new Set(chosen)];
+      if(distinct.length>1){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-relation-existing-conflict',question:q.key});continue}
+      candidates=candidates.filter(e=>!distinct.length||qkey(label(e))===distinct[0]);
+      // The first choice must remain available in every row.
+      candidates=candidates.filter(e=>rows.every(row=>opts(row).some(x=>qkey(label(x))===qkey(label(e))&&!isAvoid(row.key,label(x)))));
+     }else{
+      const index=rows.indexOf(q),previous=index>0?opts(rows[index-1]).find(isOn):null;
+      if(previous)candidates=candidates.filter(e=>qkey(label(e))!==qkey(label(previous)));
+     }
+     const existing=opts(q).find(isOn);
+     if(existing){if(!candidates.includes(existing)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-relation-existing-conflict',question:q.key})}continue}
+     if(!candidates.length){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-relation-no-safe-answer',question:q.key});continue}
+     const labels=candidates.map(label),tier=bestTier(q.key,labels,candidates),target=candidates[tier[rnd(tier.length)]];
+     if(!target||!fireChoice(target)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'grid-relation-selection-unverified',question:q.key});continue}
+     const name=label(target);selected.push(name);pairs.push({question:q.key,option:qkey(name)});pickedTrail.push(qkey(q.key)+'\u0000'+qkey(name));acts.push('grid-relation-'+rules[0]);acted++;
+     continue;
+    }
+   }
    // A mix is a constraint over the carousel's cards, not a demand to select
    // both radio answers on one card. Derive counts from the survey's own
    // checked state so refreshes and existing answers remain authoritative.

@@ -31,6 +31,21 @@ with sync_playwright() as p:
   if page.locator('#next').get_attribute('data-clicked')=='yes':break
  assert page.locator('.row').count()==12 and page.locator('.row').filter(has=page.locator('input:checked')).count()==12,d
  print('PASS multi grid: every row has a selection')
+ for instruction,relation in [('Select the same option for every row','same'),('Select a different option from the previous row','different')]:
+  page.set_content(html(extra='<p>'+instruction+'</p>'));page.evaluate('delete window.__apNavIntent')
+  for i in range(20):
+   d=page.evaluate(engine)
+   if page.locator('#next').get_attribute('data-clicked')=='yes':break
+  values=page.locator('.row').evaluate_all('(rows)=>rows.map(r=>Array.from(r.querySelectorAll("input")).findIndex(x=>x.checked))')
+  assert len(values)==12 and all(v>=0 for v in values) and page.locator('#next').get_attribute('data-clicked')=='yes',(relation,values,d)
+  if relation=='same':assert len(set(values))==1,(relation,values,d)
+  else:assert all(a!=b for a,b in zip(values,values[1:])),(relation,values,d)
+  print('PASS explicit grid relation and navigation:',relation)
+ page.set_content(html(extra='<p>Select the same option for every row</p>'));page.evaluate('delete window.__apNavIntent')
+ page.locator('.row').nth(0).locator('input').nth(0).check();page.locator('.row').nth(1).locator('input').nth(1).check()
+ d=page.evaluate(engine)
+ assert page.locator('#next').get_attribute('data-clicked') is None and any(x.get('reason')=='grid-relation-existing-conflict' for x in d['instructions']['details'] if isinstance(x,dict)),d
+ print('PASS conflicting existing grid answers block submission')
  page.set_content(html(extra='<strong style="color:red">Please select one answer per row</strong>'));page.evaluate('delete window.__apNavIntent');d=page.evaluate(engine)
  assert page.locator('input:checked').count()==1 and page.locator('#next').get_attribute('data-clicked') is None,d
  print('PASS instruction-bearing grid uses one-row path')
