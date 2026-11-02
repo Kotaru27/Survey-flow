@@ -32,6 +32,7 @@ jobs:
         run: |
           python tests/browser-fixtures.py
           python tests/answer-variety-browser.py
+          python tests/seeded-qa-browser.py
           python tests/recovery-repro.py
           python tests/multi-page-journey.py
           python tests/validation-memory-browser.py
