@@ -1,0 +1,37 @@
+//go:build windows
+package main
+import (
+ "fmt"
+ "net/http"
+ "net/http/httptest"
+ "os"
+ "path/filepath"
+ "sync"
+ "testing"
+ "time"
+)
+func TestTwoParallelBrowsersAreIsolated(t *testing.T){
+ if os.Getenv("SURVEY_QA_E2E")!="1"{t.Skip("explicit synthetic browser QA only")}
+ t.Setenv("SURVEY_QA_HEADLESS","1")
+ root:=t.TempDir();for _,d:=range []string{"data","reports"}{if e:=os.MkdirAll(filepath.Join(root,d),0700);e!=nil{t.Fatal(e)}}
+ var mu sync.Mutex; starts:=0;tokens:=map[string]bool{}; finished:=map[string]bool{};both:=make(chan struct{})
+ srv:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  switch r.URL.Path {
+  case "/start":
+   mu.Lock();starts++;id:=fmt.Sprint(starts);tokens[id]=true;if starts==2{close(both)};mu.Unlock()
+   select{case <-both:case <-time.After(25*time.Second):http.Error(w,"second worker did not arrive",500);return}
+   http.SetCookie(w,&http.Cookie{Name:"qa_worker",Value:id,Path:"/"})
+   fmt.Fprint(w,`<html><body><section class="question"><h3>Choose an answer</h3><label><input type="radio" name="q" value="yes">Yes</label></section><button id="next" onclick="if(document.querySelector('input:checked'))location.href='/BCEndPages/en-Qual.html'">Next</button></body></html>`)
+  case "/BCEndPages/en-Qual.html":
+   if c,e:=r.Cookie("qa_worker");e==nil{mu.Lock();finished[c.Value]=true;mu.Unlock()};fmt.Fprint(w,"<html><body>Complete</body></html>")
+  default:http.NotFound(w,r)
+  }
+ }));defer srv.Close()
+ cfg:=AppConfig{Headless:true,BrowserMode:"external",Incognito:true,Screenshots:"none",MaxAttempts:2}
+ batch:=runParallelBatch(root,srv.URL+"/start",2,2,cfg,openMemory(root,srv.URL+"/start"),nil)
+ mu.Lock();defer mu.Unlock()
+ if batch.Completed!=2||len(batch.Runs)!=2||len(tokens)!=2||len(finished)!=2{t.Fatalf("isolated completions failed: completed=%d runs=%d starts=%d cookies=%d",batch.Completed,len(batch.Runs),starts,len(finished))}
+ a,b:=batch.Runs[0],batch.Runs[1];as,_:=time.Parse(time.RFC3339Nano,a.StartedAt);ae,_:=time.Parse(time.RFC3339Nano,a.FinishedAt);bs,_:=time.Parse(time.RFC3339Nano,b.StartedAt);be,_:=time.Parse(time.RFC3339Nano,b.FinishedAt)
+ if !as.Before(be)||!bs.Before(ae){t.Fatalf("workers did not overlap: %+v %+v",a,b)}
+ t.Logf("OVERLAP worker %d %s to %s; worker %d %s to %s; distinct cookies=%d",a.Worker,a.StartedAt,a.FinishedAt,b.Worker,b.StartedAt,b.FinishedAt,len(finished))
+}

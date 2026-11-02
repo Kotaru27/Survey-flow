@@ -135,6 +135,9 @@ type Selection struct {
 }
 
 type BatchRun struct {
+	Worker int `json:"worker,omitempty"`
+	StartedAt string `json:"startedAt,omitempty"`
+	FinishedAt string `json:"finishedAt,omitempty"`
 	Run        int      `json:"run"`
 	Window     int      `json:"window,omitempty"`
 	Status     string   `json:"status"`
@@ -1215,6 +1218,7 @@ const maxCompletes = 50
 // per step fills a disk), and one Chrome process per complete keeps the laptop pinned, so
 // both are budgeted here.
 type AppConfig struct {
+	Workers int `json:"workers"` // experimental; one worker is the safe default
 	Headless                bool   `json:"-"` // selected from the input URL
 	MaxAttempts             int    `json:"maxAttempts"` // 0 uses the existing per-completion limit
 	Screenshots             string `json:"screenshots"`             // all | key | none
@@ -1238,7 +1242,7 @@ func stripBOM(b []byte) []byte {
 
 func readAppConfig(root string) AppConfig {
 	c := AppConfig{
-		Screenshots: "none", ScreenshotFormat: "jpg", ScreenshotQuality: 60,
+		Workers: 1, Screenshots: "none", ScreenshotFormat: "jpg", ScreenshotQuality: 60,
 		ScreenshotRetentionDays: 7, MaxScreenshotsPerRun: 0,
 		CompletesPerWindow: 5, BreathingMs: 60, WindowPauseMs: 1200, Incognito: true,
 		BrowserMode: "auto",
@@ -1263,6 +1267,7 @@ func readAppConfig(root string) AppConfig {
 	if c.ScreenshotRetentionDays < 0 {
 		c.ScreenshotRetentionDays = 0
 	}
+	if c.Workers < 1 { c.Workers = 1 }; if c.Workers > 4 { c.Workers = 4 }
 	if c.MaxAttempts < 0 {
 		c.MaxAttempts = 0
 	}
@@ -1539,6 +1544,7 @@ func batchAttemptLimit(target, configured int) int {
 // group of them, a report per run. It is the same work the console launcher does,
 // extracted so the desktop window can start it without a terminal prompt.
 func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFile *os.File, progress func(string)) BatchReport {
+	if cfg.Workers > 1 && cfg.Headless && !windowed() { return runParallelBatch(root,u,total,cfg.Workers,cfg,mem,logFile) }
 	perWindow := cfg.CompletesPerWindow
 	if embeddedCDPPort(cfg) > 0 && total > 0 {
 		// One pane, one window: every complete reuses the in-window browser,
@@ -1674,6 +1680,9 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 // (the window's launch tab for the first complete, a fresh tab after that), a unique test
 // ID, the answer loop and the report. It never prompts and never closes the window.
 func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.File, runNo, total int, cfg AppConfig, sess *BrowserSession, firstInWindow bool) RunReport {
+ return runCompleteWithProgress(root,u,persona,mem,logFile,runNo,total,cfg,sess,firstInWindow,func(v float64){if consoleUI!=nil{consoleUI.setSurveyProgress(v)}})
+}
+func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, logFile *os.File, runNo, total int, cfg AppConfig, sess *BrowserSession, firstInWindow bool, update func(float64)) RunReport {
 	reentryID, reentryNumber, reentryErr := nextReentryID(root, persona)
 	if reentryErr != nil {
 		logLine(logFile, "Could not mint a test ID: %v", reentryErr)
@@ -2200,7 +2209,7 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 				mergeStepAnswers(m, extraPairs, extraLabels)
 			}
 		}
-		if consoleUI != nil { if v, ok := m["surveyProgress"].(float64); ok { consoleUI.setSurveyProgress(v) } else { consoleUI.setSurveyProgress(-1) } }
+		if update != nil { if v, ok := m["surveyProgress"].(float64); ok { update(v) } else { update(-1) } }
 		sr := StepReport{Step: step, Time: time.Now().Format(time.RFC3339), URL: str(m["url"]), Title: str(m["title"]), Question: str(m["question"]), QuestionType: str(m["questionType"]), Action: str(m["action"]), Validation: toStrings(m["validation"])}
 		sr.DurationMS = time.Since(stepStarted).Milliseconds()
 		sr.NeedsHuman = boolv(m["needsHuman"])
