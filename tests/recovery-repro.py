@@ -52,6 +52,14 @@ with sync_playwright() as p:
   assert len(d['questions'])==2 and d['unanswered']>=1,d
   assert not pg.locator('#next').get_attribute('data-clicked'),d
  run('separate-unanswered-group-blocks-next','''<div class="question"><h3>Two independent selections</h3><div role="radiogroup"><div role="radio" aria-checked="false" tabindex="0" onclick="this.setAttribute('aria-checked','true')">A</div><div role="radio" aria-checked="false" tabindex="0" onclick="this.setAttribute('aria-checked','true')">B</div></div><div role="radiogroup"><div role="radio" aria-checked="false" tabindex="0">C</div><div role="radio" aria-checked="false" tabindex="0">D</div></div></div><button id="next" onclick="this.dataset.clicked='1'">Next</button>''',separateUnanswered)
+ def cardChecks(pg,d):
+  checks=pg.locator('[role=checkbox]')
+  assert len(d['questions'])==1 and d['questions'][0]['n']==6,d
+  assert pg.locator('[role=checkbox][aria-checked=true]').count()>=1,d
+  assert checks.nth(5).get_attribute('aria-checked')=='false',d
+  assert d['unanswered']==0 and pg.locator('#next').get_attribute('data-clicked')=='1',d
+ cards=''.join('<div class="cf-list__item"><div id="cqFake_'+str(i)+'"><div role="checkbox" tabindex="0" aria-checked="false" aria-label="'+('Nessuna di queste risposte' if i==5 else 'Option '+str(i))+'" onclick="toggle(this)">'+('None' if i==5 else '<img width="24" height="24" alt="Option" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="><span style="display:none">Option '+str(i)+'</span>')+'</div></div></div>' for i in range(6))
+ run('checkbox-cards-are-one-question','<div class="cf-question" id="cqFake"><h3>Choose all that apply</h3><div role="group">'+cards+'''</div></div><button id="next" onclick="this.dataset.clicked='1'">Next</button><script>function toggle(e){e.setAttribute('aria-checked',e.getAttribute('aria-checked')==='true'?'false':'true')}</script>''',cardChecks)
  def dropdown(pg,d):
   assert pg.locator('select').input_value()!='placeholder' and d['unanswered']==0
  run('rejects-placeholder-nonempty-value','''<div class="question"><h3>Which category?</h3><select name="category" required><option value="placeholder">Please select an option</option><option value="one">First</option><option value="two">Second</option></select></div><button id="next" onclick="this.dataset.clicked=String(Number(this.dataset.clicked||0)+1)">Next</button>''',dropdown)

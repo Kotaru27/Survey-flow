@@ -25,7 +25,7 @@ with sync_playwright() as p:
   if i<4: assert page.locator('.answer-container.visible').count()==1
   page.evaluate('delete window.__apNavIntent')
  scores=page.locator('.answer-container input').evaluate_all('(xs)=>xs.map(x=>Number(x.value))')
- assert len(set(scores))==5 and page.locator('body').get_attribute('data-done')=='1',scores
+ assert len(set(scores))==5 and all(v>50 for v in scores) and page.locator('body').get_attribute('data-done')=='1',scores
  assert page.locator('[role=radio][aria-checked=true]').count()==5
  print('PASS visible decorative drag icon ignored; five distinct confirmed circle scores and navigation')
  page.set_content(html);page.evaluate('window.reject=true');d=page.evaluate(engine)
@@ -34,6 +34,14 @@ with sync_playwright() as p:
  page.set_content(html);page.evaluate('''() => {window.reject=false; window.__apEmoPending=[]; const x=[...document.querySelectorAll('.slider')];for(let i=0;i<2;i++){x[i].value='50';x[i].dispatchEvent(new Event('input',{bubbles:true}));}document.querySelectorAll('.answer-container')[0].classList.replace('visible','hidden');document.querySelectorAll('.answer-container')[2].classList.replace('hidden','visible');delete window.__apNavIntent}''');d=page.evaluate(engine)
  assert d['unanswered']>0 and d['instructions']['blocked']>0 and page.locator('.answer-container.answered').count()==2,d
  print('PASS repeated prior scores block navigation')
+ # RTL ranges increase to the left; a smaller value represents rightward movement.
+ page.set_content(html);page.evaluate("window.reject=false; delete window.__apNavIntent; document.querySelectorAll('.slider').forEach(e=>e.style.direction='rtl')");d=page.evaluate(engine)
+ assert 'circle-score' in d['action'] and int(page.locator('.slider').first.input_value())<50,d
+ print('PASS RTL circle moves toward the right')
+ # At the right edge, do not move left as a fallback.
+ page.set_content(html);page.evaluate("window.reject=false; delete window.__apNavIntent; document.querySelector('.slider').value='100'");d=page.evaluate(engine)
+ assert d['unanswered']>0 and d['instructions']['blocked']>0 and page.locator('.answer-container.answered').count()==0,d
+ print('PASS circle at right edge does not move left')
  # A common class name or the phrase "scale from" is not a circle widget.
  page.set_content('''<div class="question answer-container"><h3>Rate this on a scale from 0 to 10</h3><input type="range" min="0" max="10" value="5"></div><div class="question"><h3>Choose one</h3><label><input type="radio" name="choice">Alpha</label><label><input type="radio" name="choice">Beta</label></div><button id="next" onclick="this.dataset.clicked='1'">Next</button>''');page.evaluate('delete window.__apNavIntent');d=page.evaluate(engine)
  assert d['questionType']!='emo_resonance' and page.locator('input[type=radio]:checked').count()==1 and page.locator('input[type=range]').get_attribute('data-ap-selected')=='1' and page.locator('#next').get_attribute('data-clicked')=='1',d

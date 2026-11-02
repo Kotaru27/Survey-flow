@@ -155,7 +155,11 @@ if(!completion&&!termination&&pageModel){
      }
      const min=Number(h.min||0),max=Number(h.max||100),step=Number(h.step||1);
      if(!Number.isFinite(min)||!Number.isFinite(max)||!Number.isFinite(step)||step<=0||max<min||((max-min)/step)>1000){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-scale-unsupported'});continue}
-     const choices=[];for(let n=0;n<=Math.floor((max-min)/step+1e-9);n++){const v=Number((min+n*step).toFixed(8));if(!used.includes(v))choices.push(v)}
+     // The user requested a rightward movement from the current position.
+     // For an RTL native range increasing the value moves left.
+     const current=Number(h.value),rtl=getComputedStyle(h).direction==='rtl';
+     if(!Number.isFinite(current)){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-start-unknown'});continue}
+     const choices=[];for(let n=0;n<=Math.floor((max-min)/step+1e-9);n++){const v=Number((min+n*step).toFixed(8));if((rtl?v<current:v>current)&&!used.includes(v))choices.push(v)}
      if(!choices.length){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-no-distinct-score'});continue}
      const want=choices[rnd(choices.length)];
      const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
@@ -213,8 +217,9 @@ if(!completion&&!termination&&pageModel){
      const roomR=Math.max(0,trr.right-hr.width-hx),roomL=Math.max(0,hx-hr.width-trr.left);
      const reach=Math.max(16,Math.min(trr.width*frac,Math.max(roomL,roomR)));
      const tryN=(h.__apEmoTry=(h.__apEmoTry||0)+1);
-     const dir=(tryN%2===0||roomR>=reach)?1:-1;
-     tx=hx+dir*Math.min(reach,dir>0?roomR:roomL);ty=hy;
+     // Never drag left; if there is no room, keep the question open.
+     if(roomR<1){INSTRUCTION_BLOCK.count++;INSTRUCTION_BLOCK.details.push({reason:'circle-no-room-right'});continue}
+     tx=hx+Math.min(reach,roomR);ty=hy;
      ok=dragTo(h,tx,ty);
     }
     if(answeredByBox()){markSel(h);recordEmo(h,frac);

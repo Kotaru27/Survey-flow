@@ -115,6 +115,20 @@ function buildQuestions(box,includeHidden){
   }
   for(const e of els)structuralKey.set(e,owner);
  }
+ // A visual checkbox card is still an option in the same multi-choice
+ // question. Its own image wrapper must not become an extra question.
+ const checkOwners=new Map();
+ for(const e of choice){
+  if(!e.matches?.('[role="checkbox"]')||e.getAttribute('name'))continue;
+  const owner=e.closest('[role="group"],fieldset,.cf-question,.question,.question-container,[data-question]');
+  if(!owner)continue;
+  if(!checkOwners.has(owner))checkOwners.set(owner,[]);
+  checkOwners.get(owner).push(e);
+ }
+ for(const [owner,els] of checkOwners){
+  if(els.length<2||els.some(e=>e.closest('[role="row"],tr,[data-row]'))||splitRows(els))continue;
+  for(const e of els)structuralKey.set(e,owner);
+ }
  const groups=new Map();
  for(const e of choice){const b=structuralKey.get(e)||baseKey(e);if(!groups.has(b))groups.set(b,[]);groups.get(b).push(e)}
  const seenGroupBases=new Map();
