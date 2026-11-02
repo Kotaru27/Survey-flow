@@ -46,6 +46,22 @@ with sync_playwright() as p:
  d=page.evaluate(engine)
  assert page.locator('#next').get_attribute('data-clicked') is None and any(x.get('reason')=='grid-relation-existing-conflict' for x in d['instructions']['details'] if isinstance(x,dict)),d
  print('PASS conflicting existing grid answers block submission')
+ page.set_content(html(extra='<strong style="color:red">Select the same option for every row</strong>'));page.evaluate('delete window.__apNavIntent')
+ for i in range(20):
+  d=page.evaluate(engine)
+  if page.locator('#next').get_attribute('data-clicked')=='yes':break
+ values=page.locator('.row').evaluate_all('(rows)=>rows.map(r=>Array.from(r.querySelectorAll("input")).findIndex(x=>x.checked))')
+ assert all(v>=0 for v in values) and len(set(values))==1 and page.locator('#next').get_attribute('data-clicked')=='yes',(values,d)
+ print('PASS red grid consistency instruction and navigation')
+ page.set_content(html(extra='<p>Select the same option for every row</p>'));page.evaluate('delete window.__apNavIntent');d=page.evaluate(engine)
+ keys=[x['key'] for x in d['questions'] if x['grid']]
+ assert len(keys)>=2,d
+ page.set_content(html(extra='<p>Select the same option for every row</p>'));page.evaluate('delete window.__apNavIntent')
+ memory={'avoid':[{'question':keys[1],'option':x} for x in ('Low','Mid','High')]}
+ constrained=engine.replace('const MEM={};','const MEM='+json.dumps(memory)+';',1)
+ d=page.evaluate(constrained)
+ assert page.locator('#next').get_attribute('data-clicked') is None and page.locator('input:checked').count()==0 and d['instructions']['blocked']>0,d
+ print('PASS no common memory-safe grid answer blocks submission')
  page.set_content(html(extra='<strong style="color:red">Please select one answer per row</strong>'));page.evaluate('delete window.__apNavIntent');d=page.evaluate(engine)
  assert page.locator('input:checked').count()==1 and page.locator('#next').get_attribute('data-clicked') is None,d
  print('PASS instruction-bearing grid uses one-row path')
