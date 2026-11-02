@@ -6,6 +6,7 @@ __pycache__/
 
 # runtime artifacts
 survey_memory.json
+config/study-key.json
 persona.json
 traces.jsonl
 

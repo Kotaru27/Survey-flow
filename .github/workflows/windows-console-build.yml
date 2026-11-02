@@ -7,6 +7,7 @@ on:
       - 'tests/**'
       - 'config/**'
       - 'go.mod'
+      - '.gitignore'
       - '.github/workflows/windows-console-build.yml'
 permissions:
   contents: read
