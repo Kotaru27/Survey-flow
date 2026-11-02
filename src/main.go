@@ -1533,6 +1533,14 @@ func runConsole(root string, cfg AppConfig) {
 		_, _ = in.ReadString('\n')
 		return
 	}
+	privateRules, privateErr := os.ReadFile(filepath.Join(root,"config","study-key.json"))
+	if privateErr != nil {
+		view.detail("Private study configuration", "Not found")
+	} else if !json.Valid(stripBOM(privateRules)) {
+		view.event("ERROR", rose, "Private study configuration is invalid; checks were not loaded.")
+	} else {
+		view.detail("Study checks", fmt.Sprintf("%d study-specific, %d shared",len(parseRedHerring(privateRules,u)),len(parseEmbeddedGlobalChecks(privateRules))))
+	}
 	mem := openMemory(root, u)
 	if mem.readFailed {
   view.event("ERROR", rose, "Study memory could not be read; see data/launcher.log.")
