@@ -21,9 +21,10 @@ func TestTwoParallelBrowsersAreIsolated(t *testing.T){
   switch r.URL.Path {
   case "/start":
    mu.Lock();starts++;id:=fmt.Sprint(starts);tokens[id]=true;if starts==2{close(both)};mu.Unlock()
-   select{case <-both:case <-time.After(25*time.Second):http.Error(w,"second worker did not arrive",500);return}
    http.SetCookie(w,&http.Cookie{Name:"qa_worker",Value:id,Path:"/"})
-   fmt.Fprint(w,`<html><body><section class="question"><h3>Choose an answer</h3><label><input type="radio" name="q" value="yes">Yes</label></section><button id="next" onclick="if(document.querySelector('input:checked'))location.href='/BCEndPages/en-Qual.html'">Next</button></body></html>`)
+   fmt.Fprint(w,`<html><body><section class="question"><h3>Choose an answer</h3><label><input type="radio" name="q" value="yes">Yes</label></section><button id="next" onclick="if(document.querySelector('input:checked'))fetch('/barrier').then(r=>{if(r.ok)location.href='/BCEndPages/en-Qual.html'})">Next</button></body></html>`)
+  case "/barrier":
+   select{case <-both:fmt.Fprint(w,"ready");case <-time.After(25*time.Second):http.Error(w,"second worker did not arrive",500)}
   case "/BCEndPages/en-Qual.html":
    if c,e:=r.Cookie("qa_worker");e==nil{mu.Lock();finished[c.Value]=true;mu.Unlock()};fmt.Fprint(w,"<html><body>Complete</body></html>")
   default:http.NotFound(w,r)
@@ -50,9 +51,10 @@ func TestAutoMeasuredWorkersOverlap(t *testing.T){
   switch r.URL.Path {
   case "/start":
    mu.Lock();starts++;id:=fmt.Sprint(starts);tokens[id]=true;if starts==2{close(both)};mu.Unlock()
-   select{case <-both:case <-time.After(25*time.Second):http.Error(w,"second worker did not arrive",500);return}
    http.SetCookie(w,&http.Cookie{Name:"qa_worker",Value:id,Path:"/"})
-   fmt.Fprint(w,`<html><body><section class="question"><h3>Choose an answer</h3><label><input type="radio" name="q" value="yes">Yes</label></section><button id="next" onclick="if(document.querySelector('input:checked'))location.href='/BCEndPages/en-Qual.html'">Next</button></body></html>`)
+   fmt.Fprint(w,`<html><body><section class="question"><h3>Choose an answer</h3><label><input type="radio" name="q" value="yes">Yes</label></section><button id="next" onclick="if(document.querySelector('input:checked'))fetch('/barrier').then(r=>{if(r.ok)location.href='/BCEndPages/en-Qual.html'})">Next</button></body></html>`)
+  case "/barrier":
+   select{case <-both:fmt.Fprint(w,"ready");case <-time.After(25*time.Second):http.Error(w,"second worker did not arrive",500)}
   case "/BCEndPages/en-Qual.html":
    if c,e:=r.Cookie("qa_worker");e==nil{mu.Lock();finished[c.Value]=true;mu.Unlock()};fmt.Fprint(w,"<html><body>Complete</body></html>")
   default:http.NotFound(w,r)
