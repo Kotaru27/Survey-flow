@@ -873,7 +873,7 @@ func browserDeadPage(raw string) bool {
 // a thank-you on another domain, anything that is not the questionnaire. The interview
 // is over at that point, and a step taken there finds nothing to answer - which is how a
 // run ends up sitting on a page that is not even the survey.
-func leftSurvey(raw string) bool {
+func leftSurvey(raw, surveyURL string) bool {
 	if strings.TrimSpace(raw) == "" {
 		return false
 	}
@@ -918,10 +918,6 @@ const maxRenderWait = 8 * time.Second
 func accordionAwaiting(sr StepReport, unanswered, newAnswers int) bool {
 	return unanswered > 0 && newAnswers == 0 && sr.Accordion != nil && toInt(sr.Accordion["pending"]) > 0
 }
-
-// surveyURL is the link the current run is answering. leftSurvey reads it to tell an
-// end page on another host from a page of the questionnaire.
-var surveyURL string
 
 // isNavAction reports whether the step moved the survey forward - a Next click or a
 // carousel's own advance - so the runner knows to let the document settle instead of
@@ -1136,7 +1132,11 @@ func randomToken(n int) string {
 
 // nextReentryID mints a test ID that has never been issued before.
 // Every issued ID is appended to data/reentry-history.txt so a re-used ID can never be handed out twice.
+// Serializes history and counter access between workers in this process.
+var reentryIDMu sync.Mutex
 func nextReentryID(root string, persona Persona) (string, int, error) {
+	reentryIDMu.Lock()
+	defer reentryIDMu.Unlock()
 	template := strings.TrimSpace(persona.ReentryTemplate)
 	if template == "" {
 		template = "MT{uid}"
@@ -1674,9 +1674,6 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 // (the window's launch tab for the first complete, a fresh tab after that), a unique test
 // ID, the answer loop and the report. It never prompts and never closes the window.
 func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.File, runNo, total int, cfg AppConfig, sess *BrowserSession, firstInWindow bool) RunReport {
-	// leftSurvey compares the browser's URL against this one, so the run's own address is
-	// what counts as "still the survey".
-	surveyURL = u
 	reentryID, reentryNumber, reentryErr := nextReentryID(root, persona)
 	if reentryErr != nil {
 		logLine(logFile, "Could not mint a test ID: %v", reentryErr)
@@ -2061,7 +2058,7 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 							logLine(logFile, "Step %d: verified qualification on %s after the page evaluation failed.", step, here)
 							goto END_RUN
 						}
-						if leftSurvey(here) {
+						if leftSurvey(here, u) {
 							if isTerminatedURL(here) {
 								report.Status = "screenout_or_termination"
 							} else {
@@ -2357,7 +2354,7 @@ func runComplete(root, u string, persona Persona, mem *MemoryStore, logFile *os.
 		// The survey can also end the interview by sending the browser to a page of its
 		// own. Nothing is answerable there, so the run is finished rather than left
 		// looking at a page that is not the survey.
-		if leftSurvey(str(m["url"])) {
+		if leftSurvey(str(m["url"]), u) {
 			low := strings.ToLower(str(m["bodyPreview"]) + " " + str(m["title"]))
 			if isTerminatedURL(str(m["url"])) || boolv(m["termination"]) ||
 				regexp.MustCompile(`unfortunately|did not qualify|not qualify|does not correspond|screened out|not eligible`).MatchString(low) {
