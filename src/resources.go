@@ -8,4 +8,9 @@ func memoryWorkerCapacity(available uint64,ok bool) int {
  if capacity<1{return 1};if capacity>4{return 4};return capacity
 }
 func memoryWorkerLimit(available uint64,ok bool) int {n:=memoryWorkerCapacity(available,ok);if n>2{return 2};return n}
-func automaticWorkerLimit() int {available,ok:=availablePhysicalMemory();return memoryWorkerLimit(available,ok)}
+
+func workerCountForRun(c AppConfig,visible bool,total int) int {
+ n:=c.Workers
+ if n==0 {probe:=availablePhysicalMemory;if c.memoryProbe!=nil{probe=c.memoryProbe};memory,ok:=probe();n=memoryWorkerLimit(memory,ok)}
+ if visible {n=1};if n<1{n=1};if n>4{n=4};if total>0&&n>total{n=total};return n
+}

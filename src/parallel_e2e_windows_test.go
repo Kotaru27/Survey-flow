@@ -7,6 +7,7 @@ import (
  "net/http/httptest"
  "os"
  "path/filepath"
+ "strings"
  "sync"
  "testing"
  "time"
@@ -38,4 +39,19 @@ func TestTwoParallelBrowsersAreIsolated(t *testing.T){
  a,b:=batch.Runs[0],batch.Runs[1];as,_:=time.Parse(time.RFC3339Nano,a.StartedAt);ae,_:=time.Parse(time.RFC3339Nano,a.FinishedAt);bs,_:=time.Parse(time.RFC3339Nano,b.StartedAt);be,_:=time.Parse(time.RFC3339Nano,b.FinishedAt)
  if !as.Before(be)||!bs.Before(ae){t.Fatalf("workers did not overlap: %+v %+v",a,b)}
  t.Logf("OVERLAP worker %d %s to %s; worker %d %s to %s; distinct cookies=%d",a.Worker,a.StartedAt,a.FinishedAt,b.Worker,b.StartedAt,b.FinishedAt,len(finished))
+}
+
+func TestParallelStopDrainsActiveBrowsers(t *testing.T){
+ if os.Getenv("SURVEY_QA_E2E")!="1"{t.Skip("explicit synthetic browser QA only")};t.Setenv("SURVEY_QA_HEADLESS","1")
+ root:=t.TempDir();for _,d:=range []string{"data","reports"}{if e:=os.MkdirAll(filepath.Join(root,d),0700);e!=nil{t.Fatal(e)}}
+ var mu sync.Mutex;starts:=0;released:=make(chan struct{});stop:=make(chan os.Signal,1)
+ srv:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){switch r.URL.Path{
+ case "/start":mu.Lock();starts++;if starts==2{stop<-os.Interrupt;close(released)};mu.Unlock();select{case <-released:case <-time.After(25*time.Second):http.Error(w,"workers not ready",500);return};fmt.Fprint(w,`<html><body><section class="question"><h3>Choose an answer</h3><label><input type="radio" name="q" value="yes">Yes</label></section><button id="next" onclick="if(document.querySelector('input:checked'))location.href='/BCEndPages/en-Qual.html'">Next</button></body></html>`)
+ case "/BCEndPages/en-Qual.html":fmt.Fprint(w,"<html><body>Complete</body></html>")
+ default:http.NotFound(w,r)}}));defer srv.Close()
+ cfg:=AppConfig{Headless:true,BrowserMode:"external",Incognito:true,Screenshots:"none",Stop:stop,memoryProbe:func()(uint64,bool){return 16*1024*1024*1024,true},MaxAttempts:4}
+ batch:=runParallelBatch(root,srv.URL+"/start",4,2,cfg,openMemory(root,srv.URL+"/start"),nil)
+ mu.Lock();gotStarts:=starts;mu.Unlock();if gotStarts!=2||len(batch.Runs)!=2||batch.Completed!=2{t.Fatalf("stop did not drain just two attempts: starts=%d runs=%d completed=%d",gotStarts,len(batch.Runs),batch.Completed)}
+ entries,e:=os.ReadDir(filepath.Join(root,"data"));if e!=nil{t.Fatal(e)};for _,entry:=range entries{if strings.HasPrefix(entry.Name(),"browser-profile-"){t.Errorf("profile remains: %s",entry.Name())}}
+ t.Log("PASS stop prevented new attempts and both active browsers completed and cleaned up")
 }

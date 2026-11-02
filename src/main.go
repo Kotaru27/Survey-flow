@@ -1528,9 +1528,7 @@ func runConsole(root string, cfg AppConfig) {
   view.detail("Study memory", "New study")
  }
 	total := promptCompletes(in, logFile)
- if cfg.Workers == 0 { cfg.Workers=automaticWorkerLimit() }
- if visible {cfg.Workers=1}
- if total<cfg.Workers {cfg.Workers=total}
+ cfg.Workers=workerCountForRun(cfg,visible,total)
  view.detail("Workers",fmt.Sprintf("%d active slots",cfg.Workers))
  if cfg.Workers>1 {stop:=make(chan os.Signal,1);signal.Notify(stop,os.Interrupt);defer signal.Stop(stop);cfg.Stop=stop;view.detail("Stop","Ctrl+C stops new attempts and lets active surveys finish")}
  view.startBatch(total, visible)
