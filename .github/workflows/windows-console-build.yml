@@ -79,6 +79,12 @@ jobs:
           $env:SURVEY_QA_E2E = '1'
           go test ./src -run '^(TestCloudBrowserRecoveryEndToEnd|TestTwoParallelBrowsersAreIsolated|TestSyntheticWorkerThroughput)$' -count=1 -timeout 5m -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Concurrent browser race check
+        shell: pwsh
+        run: |
+          $env:SURVEY_QA_E2E = '1'
+          go test -race ./src -run '^TestTwoParallelBrowsersAreIsolated$' -count=1 -timeout 3m -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build console executable (not GUI)
         shell: pwsh
         run: |
