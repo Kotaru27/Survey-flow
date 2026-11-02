@@ -35,7 +35,7 @@ func TestTwoParallelBrowsersAreIsolated(t *testing.T){
  batch:=runParallelBatch(root,srv.URL+"/start",2,2,cfg,openMemory(root,srv.URL+"/start"),nil)
  view.mu.Lock();attempts:=view.attempts;view.mu.Unlock();if attempts!=2{t.Fatalf("dashboard recorded %d attempts",attempts)}
  mu.Lock();defer mu.Unlock()
- if batch.Completed!=2||len(batch.Runs)!=2||len(tokens)!=2||len(finished)!=2{t.Fatalf("isolated completions failed: completed=%d runs=%d starts=%d cookies=%d",batch.Completed,len(batch.Runs),starts,len(finished))}
+ if batch.Completed!=2||len(batch.Runs)!=2||len(tokens)!=2||len(finished)!=2{for _,r:=range batch.Runs{t.Logf("synthetic attempt %d status=%s errors=%v",r.Run,r.Status,r.Errors)};t.Fatalf("isolated completions failed: completed=%d runs=%d starts=%d cookies=%d",batch.Completed,len(batch.Runs),starts,len(finished))}
  a,b:=batch.Runs[0],batch.Runs[1];as,_:=time.Parse(time.RFC3339Nano,a.StartedAt);ae,_:=time.Parse(time.RFC3339Nano,a.FinishedAt);bs,_:=time.Parse(time.RFC3339Nano,b.StartedAt);be,_:=time.Parse(time.RFC3339Nano,b.FinishedAt)
  if !as.Before(be)||!bs.Before(ae){t.Fatalf("workers did not overlap: %+v %+v",a,b)}
  t.Logf("OVERLAP worker %d %s to %s; worker %d %s to %s; distinct cookies=%d",a.Worker,a.StartedAt,a.FinishedAt,b.Worker,b.StartedAt,b.FinishedAt,len(finished))
@@ -64,7 +64,7 @@ func TestAutoMeasuredWorkersOverlap(t *testing.T){
  batch:=runParallelBatch(root,srv.URL+"/start",2,2,cfg,openMemory(root,srv.URL+"/start"),nil)
  view.mu.Lock();attempts:=view.attempts;view.mu.Unlock();if attempts!=2{t.Fatalf("dashboard recorded %d attempts",attempts)}
  mu.Lock();defer mu.Unlock()
- if batch.Completed!=2||len(batch.Runs)!=2||len(tokens)!=2||len(finished)!=2{t.Fatalf("isolated completions failed: completed=%d runs=%d starts=%d cookies=%d",batch.Completed,len(batch.Runs),starts,len(finished))}
+ if batch.Completed!=2||len(batch.Runs)!=2||len(tokens)!=2||len(finished)!=2{for _,r:=range batch.Runs{t.Logf("synthetic attempt %d status=%s errors=%v",r.Run,r.Status,r.Errors)};t.Fatalf("isolated completions failed: completed=%d runs=%d starts=%d cookies=%d",batch.Completed,len(batch.Runs),starts,len(finished))}
  a,b:=batch.Runs[0],batch.Runs[1];as,_:=time.Parse(time.RFC3339Nano,a.StartedAt);ae,_:=time.Parse(time.RFC3339Nano,a.FinishedAt);bs,_:=time.Parse(time.RFC3339Nano,b.StartedAt);be,_:=time.Parse(time.RFC3339Nano,b.FinishedAt)
  if !as.Before(be)||!bs.Before(ae){t.Fatalf("workers did not overlap: %+v %+v",a,b)}
  t.Logf("OVERLAP worker %d %s to %s; worker %d %s to %s; distinct cookies=%d",a.Worker,a.StartedAt,a.FinishedAt,b.Worker,b.StartedAt,b.FinishedAt,len(finished))
