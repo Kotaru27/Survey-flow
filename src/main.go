@@ -1893,6 +1893,7 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 	attemptStart := 1
 	lastStep := 0
 	noteProgress := func(atStep int) {
+		if persona.QASeed!="" {return}
 		if mem.noteFurthest(memFP, attemptPairs, atStep-attemptStart) {
 			mem.save()
 			logLine(logFile, "Observed: this profile reached %d step(s); %d answer(s) are not treated as a verified success.", atStep-attemptStart, len(attemptPairs))
@@ -1901,6 +1902,7 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 	// blameEnd remembers selections under this survey so the next run does not repeat
 	// them. budget limits how many of them one call may add.
 	blameEnd := func(pairs []answerPair, reason string, budget int) {
+		if persona.QASeed!="" {return}
 		if reason != "screenout" || lastSuspectRecorded || len(lastSubmitted) != 1 { return }
 		p := lastSubmitted[0]
 		if ok, saveErr := mem.recordScreenoutSuspect(memFP, lastSubmitted, reason); ok {
@@ -2048,6 +2050,9 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 		}
 		mem.forURL(u)
 		avoidList := mem.avoidFor(memFP)
+		// Reproducible coverage must not exclude valid scenarios merely because an
+		// earlier synthetic respondent was legitimately screened out.
+		if persona.QASeed!="" {avoidList=[]AvoidRule{}}
 		memPayload := map[string]any{"avoid": avoidList, "reopen": reopenList, "forceNext": forceNext,
 			// What has already completed this survey, the answer sets that ended a run
 			// badly, how each known answer has scored, and which single question this
@@ -2435,6 +2440,10 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 			reason := "screenout"
 			if strings.Contains(low, "quota") {
 				reason = "quota"
+			}
+			if persona.QASeed!="" {
+				if reason=="quota" {report.Status="quota"} else {report.Status="screenout_or_termination"}
+				break
 			}
 			// Whatever ended this attempt, the answers that led here must not be repeated.
 			blameEnd(attemptPairs, reason, maxLearnPerRun-learnCount)
@@ -2871,6 +2880,7 @@ END_RUN:
 	case "validation_failure":
 		blameEnd(runPairs, "validation", maxEndBlamePerRun)
 	case "completed":
+		if persona.QASeed!="" {break}
 		// The answers that reached the end page are stored as the profile that works,
 		// and the rules that were closing them off are dropped: the next run replays
 		// this profile instead of guessing it again.
