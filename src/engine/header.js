@@ -42,7 +42,7 @@ async function renderedNow(){
   const futureSentence=/\b(?:on|in|over|during)\s+(?:the\s+)?(?:next|following|upcoming|subsequent)\s+(?:pages?|screens?|sections?|questions?)\b|\b(?:you|we)\s+(?:will|will be|are going to)\b|\b(?:next|following|upcoming|subsequent)\s+(?:pages?|screens?|sections?|questions?)\s+(?:will|are going to)\b/i;
   const hasFuture=sentences.some(s=>futureSentence.test(s));
   const current=sentences.filter(s=>!futureSentence.test(s)).join(' ');
-  const pendingStructure=!!document.querySelector('[required],[aria-required="true"],[aria-busy="true"],iframe,frame,input:not([type="hidden"]),select,textarea,[role="radio"],[role="checkbox"],[role="option"],[role="textbox"],[contenteditable="true"]');
+  const pendingStructure=!!document.querySelector('[required],[aria-required="true"],[aria-busy="true"],iframe,frame,input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]),select,textarea,[role="radio"],[role="checkbox"],[role="option"],[role="textbox"],[contenteditable="true"]');
   const futureOnly=hasFuture&&!prompt.includes('?')&&!direct.test(current)&&!directive.test(current)&&!pendingStructure;
   if(futureOnly){
    const now=Date.now(), key=prompt.slice(0,700);

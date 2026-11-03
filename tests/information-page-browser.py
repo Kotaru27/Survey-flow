@@ -7,7 +7,7 @@ root=Path(__file__).resolve().parents[1]
 parts=['header','detect','helpers','accordion','analyze','dispatch','adapters','adapters-custom','navigate']
 engine='\n'.join((root/'src'/'engine'/f'{p}.js').read_text() for p in parts)
 engine=engine.replace('const RAW=PERSONA;', 'const RAW='+json.dumps({'AnswerMode':'persona','OpenText':'Example'})+';').replace('const MEM=MEMORY;', 'const MEM={};').replace('const answered=__ANSWERED__;', 'const answered=0;')
-base='''<style>body{padding:30px} .question{padding:20px} button{padding:12px}</style><div class="question"><h3 class="question-title">%s</h3><div id="mount"></div></div><button id="next" onclick="this.dataset.clicked='yes'">Next</button>%s'''
+base='''<style>body{padding:30px} .question{padding:20px} button{padding:12px}</style><input type="hidden" name="state" value="synthetic"><div class="question"><h3 class="question-title">%s</h3><div id="mount"></div></div><button id="next" onclick="this.dataset.clicked='yes'">Next</button>%s'''
 with sync_playwright() as p:
     browser=p.chromium.launch(headless=True,args=['--no-sandbox','--disable-dev-shm-usage'])
     page=browser.new_page()
