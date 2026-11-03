@@ -21,7 +21,7 @@ function harness(prompt,options={}){
 (async()=>{
  let h=harness('On the following pages you will see an exercise. You will be asked to indicate your preference.');
  assert.equal(await h.check(),false,'information page must first settle');h.advance(1499);assert.equal(await h.check(),false);h.advance(1);assert.equal(await h.check(),true);
- for(const text of ['Which option do you prefer?', 'Please select an answer.', 'On the next page you will see a chart. Which product do you prefer?', 'On the following screens you will see examples. Please select a response.']){
+ for(const text of ['Which option do you prefer?', 'Please select an answer.', 'On the next page you will see a chart. Which product do you prefer?', 'On the following screens you will see examples. Please select a response.', 'On the next page you will see a chart, please select a response now.']){
   h=harness(text);await h.check();h.advance(5000);assert.equal(await h.check(),false,text);
  }
  h=harness('On the next page you will be asked to select a response.',{pending:true});await h.check();h.advance(5000);assert.equal(await h.check(),false,'pending structure blocks advance');

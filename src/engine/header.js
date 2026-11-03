@@ -43,7 +43,8 @@ async function renderedNow(){
   const hasFuture=sentences.some(s=>futureSentence.test(s));
   const current=sentences.filter(s=>!futureSentence.test(s)).join(' ');
   const pendingStructure=!!document.querySelector('[required],[aria-required="true"],[aria-busy="true"],iframe,frame,input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]),select,textarea,[role="radio"],[role="checkbox"],[role="option"],[role="textbox"],[contenteditable="true"]');
-  const futureOnly=hasFuture&&!prompt.includes('?')&&!direct.test(current)&&!directive.test(current)&&!pendingStructure;
+  const currentCommand=/\b(?:please|now)\s+(?:select|choose|pick|rate|rank|enter|indicate|tick|check)\b|\b(?:select|choose|pick|rate|rank|enter|indicate|tick|check)\b[^.!?]{0,60}\bnow\b/i;
+  const futureOnly=hasFuture&&!prompt.includes('?')&&!currentCommand.test(prompt)&&!direct.test(current)&&!directive.test(current)&&!pendingStructure;
   if(futureOnly){
    const now=Date.now(), key=prompt.slice(0,700);
    if(!window.__apInfoWait||window.__apInfoWait.key!==key)window.__apInfoWait={key,since:now};
