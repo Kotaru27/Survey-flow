@@ -35,7 +35,21 @@ async function renderedNow(){
   // answer instructions, including when their controls mount asynchronously.
   const direct=/\?|(?:^|[.!:]\s+)\s*(?:which|what|how|where|when|who|whose|why|have|has|do|does|did|are|is|would|could)\b/i;
   const directive=/\b(?:select|choose|pick|rate|rank|enter|indicate|tick|check)\b/i;
-  const questionExpected=prompt.length>0&&(direct.test(prompt)||directive.test(prompt));
+  // Only exempt descriptions of a *later* page, never instructions or questions
+  // in another sentence on this page. A short stability period and the structural
+  // guards below reduce the risk of skipping an asynchronously mounted question.
+  const sentences=prompt.match(/[^.!?]+[.!?]?/g)||[];
+  const futureSentence=/\b(?:on|in|over|during)\s+(?:the\s+)?(?:next|following|upcoming|subsequent)\s+(?:pages?|screens?|sections?|questions?)\b|\b(?:you|we)\s+(?:will|will be|are going to)\b|\b(?:next|following|upcoming|subsequent)\s+(?:pages?|screens?|sections?|questions?)\s+(?:will|are going to)\b/i;
+  const hasFuture=sentences.some(s=>futureSentence.test(s));
+  const current=sentences.filter(s=>!futureSentence.test(s)).join(' ');
+  const pendingStructure=!!document.querySelector('[required],[aria-required="true"],[aria-busy="true"],iframe,frame,input:not([type="hidden"]),select,textarea,[role="radio"],[role="checkbox"],[role="option"],[role="textbox"],[contenteditable="true"]');
+  const futureOnly=hasFuture&&!prompt.includes('?')&&!direct.test(current)&&!directive.test(current)&&!pendingStructure;
+  if(futureOnly){
+   const now=Date.now(), key=prompt.slice(0,700);
+   if(!window.__apInfoWait||window.__apInfoWait.key!==key)window.__apInfoWait={key,since:now};
+   if(now-window.__apInfoWait.since>=1500){window.__apRenderPending=false;return true}
+  }else window.__apInfoWait=null;
+  const questionExpected=futureOnly||(prompt.length>0&&(direct.test(prompt)||directive.test(prompt)));
   window.__apRenderPending=questionExpected;
   if(questionExpected)return false;
   return !document.querySelector('[aria-required="true"],[required]');
