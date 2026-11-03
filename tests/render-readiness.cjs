@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const source=fs.readFileSync('src/engine/header.js','utf8');
+const source=fs.readFileSync('src/engine/header.js','utf8').replace(/\r\n/g,'\n');
 const start=source.indexOf('async function renderedNow()');
 const end=source.indexOf('\nwindow.__apRenderPending=false;\nfor',start);
 assert(start>=0&&end>start);
