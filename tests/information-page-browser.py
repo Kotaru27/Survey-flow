@@ -29,7 +29,7 @@ with sync_playwright() as p:
         last=page.evaluate(engine)
         if page.locator('#next').get_attribute('data-clicked')=='yes': break
         page.wait_for_timeout(300)
-    assert page.locator('input').is_checked(),last
+    assert page.locator('input[type=radio]').is_checked(),last
     assert page.locator('#next').get_attribute('data-clicked')=='yes',last
     print('PASS delayed current question is answered before advancing')
     browser.close()
