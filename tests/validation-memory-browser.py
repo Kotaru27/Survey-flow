@@ -172,6 +172,8 @@ with sync_playwright() as p:
  page.evaluate('delete window.__apNavIntent')
  d=page.evaluate(script())
  assert d['termination'] is False,('debug text was mistaken for actual termination',d)
+ assert d['nextAvailable'] is True,d
+ assert d['terminationEvidence']=='',d
  assert page.locator('#next').get_attribute('data-count')=='1',('information page did not advance',d)
  assert d['action'].split('+')[-1]=='next',d
  print('PASS information-only page advances despite test-navigator screenout metadata')
@@ -180,6 +182,8 @@ with sync_playwright() as p:
  page.evaluate('delete window.__apNavIntent')
  d=page.evaluate(script())
  assert d['termination'] is True,d
+ assert d['nextAvailable'] is False,d
+ assert d['terminationEvidence']=='respondent-message-no-next',d
  print('PASS genuine qualification failure without Next is still terminal')
 
  b.close()
