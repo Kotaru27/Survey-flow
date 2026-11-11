@@ -1243,6 +1243,7 @@ const maxCompletes = 50
 // per step fills a disk), and one Chrome process per complete keeps the laptop pinned, so
 // both are budgeted here.
 type AppConfig struct {
+ configError string
 	Workers int `json:"workers"` // zero selects a conservative available-memory limit
  autoWorkers bool
  Stop <-chan os.Signal `json:"-"`
@@ -1277,8 +1278,12 @@ func readAppConfig(root string) AppConfig {
 		BrowserMode: "auto",
 	}
 	if b, err := os.ReadFile(filepath.Join(root, "config", "app.json")); err == nil {
-		_ = json.Unmarshal(stripBOM(b), &c)
-	}
+        if decodeErr:=json.Unmarshal(stripBOM(b), &c);decodeErr!=nil{
+            c.configError="invalid config/app.json: "+decodeErr.Error()
+        }
+    } else if !os.IsNotExist(err) {
+        c.configError="cannot read config/app.json: "+err.Error()
+    }
 	c.Screenshots = strings.ToLower(strings.TrimSpace(c.Screenshots))
 	if c.Screenshots != "all" && c.Screenshots != "none" && c.Screenshots != "key" {
 		c.Screenshots = "none"
@@ -1541,6 +1546,12 @@ func runConsole(root string, cfg AppConfig) {
 	view.header()
 	view.section("NEW STUDY", "Configure an authorized QA run. Each study keeps its own memory.")
 	in := bufio.NewReader(os.Stdin)
+    if cfg.configError!=""{
+        view.event("CONFIG ERROR",rose,cfg.configError)
+        view.prompt("CLOSE","Correct config/app.json and press Enter to exit.")
+        _,_=in.ReadString('\n')
+        return
+    }
 	logPath := filepath.Join(root, "data", "launcher.log")
 	logFile, _ := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	defer func() {
@@ -1837,15 +1848,9 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 	_, _ = w.call(1, "Runtime.enable", nil)
 	_, _ = w.call(2, "Page.enable", nil)
 	logLine(logFile, "Connected to browser CDP (tab %s)", shortID(target.Id))
-	if total > 1 {
-		// The window is reused for several completes: wipe cookies and site storage so the
-		// survey treats this test ID as a brand new respondent.
-		isolateRespondent(w, 3, u)
-	}
-	// One complete may still follow a run that was stopped half way, so the session is
-	// cleared either way: a resumed survey drops the new attempt on the question the last
-	// one was terminated on, and a link that is entered that way stops being a test.
-	isolateRespondent(w, 4, u)
+	// Clear respondent cookies and storage once for every run. This already protects
+    // both single and multi-attempt batches; doing it twice caused redundant CDP calls.
+    isolateRespondent(w,4,u)
 	if _, e = w.call(6, "Page.navigate", map[string]any{"url": u}); e != nil {
 		logLine(logFile, "Navigation failed: %v", e)
 		report.Status = "navigation_error"
