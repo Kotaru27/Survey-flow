@@ -16,7 +16,7 @@ func progressBar(p,tick,width int) string {if width<1{return ""};if p<0 {s:=[]ru
 func(r *consoleRenderer) drawWorkersLocked(force bool){
  if !r.colored{return};if !force&&time.Since(r.lastDraw)<200*time.Millisecond{return};r.lastDraw=time.Now();width:=r.width();if width<2{width=2};barWidth:=12;if width<50{barWidth=6}
  p:=0;if r.target>0{p=100*r.completed/r.target};mode:="BACKGROUND";if r.visible{mode="VISIBLE"}
- lines:=[]string{fmt.Sprintf("SURVEY AUTOPILOT  ·  %s",mode),fmt.Sprintf("QUALIFICATIONS %s  %d/%d",progressBar(p,0,barWidth),r.completed,r.target)}
+ lines:=[]string{fmt.Sprintf("SURVEY FLOW  ·  %s",mode),fmt.Sprintf("QUALIFICATIONS %s  %d/%d",progressBar(p,0,barWidth),r.completed,r.target)}
  ids:=make([]int,0,len(r.workerViews));for id:=range r.workerViews{ids=append(ids,id)};sort.Ints(ids);active:=0
  for _,id:=range ids{v:=r.workerViews[id];if !v.active{continue};active++;lines=append(lines,fmt.Sprintf("W%d %s  Survey %d · Done %d",id,progressBar(v.percent,v.tick,barWidth),v.run,v.done))}
  lines=append(lines,fmt.Sprintf("Attempts %d · Screenout %d · Quota %d · Other %d",r.attempts,r.screenouts,r.quotas,r.failures),fmt.Sprintf("Workers %d active · Elapsed %s%s",active,time.Since(r.started).Round(time.Second),r.resourceText))
