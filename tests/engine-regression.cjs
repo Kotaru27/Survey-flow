@@ -63,4 +63,20 @@ for(const [url,expected] of [
  assert.equal(vm.runInNewContext(qualExpr,{location:{href:url}}),expected,url);tests++;
 }
 assert.match(detect,/const completion=!termination&&endQual;/,'completion must require qualification URL');tests++;
+// ARIA-invalid fields can expose errors without the usual global alert class.
+const readFn=detect.slice(0,detect.indexOf('const valErr='));
+const ariaNode={textContent:'Please choose at least two options'};
+const invisibleNode={textContent:'Hidden stale error'};
+const field={getAttribute(n){return n==='aria-errormessage'?'choice-error hidden-error':null}};
+const doc={
+ querySelectorAll(sel){return sel==='[aria-invalid="true"]'?[field]:[]},
+ getElementById(id){return id==='choice-error'?ariaNode:id==='hidden-error'?invisibleNode:null}
+};
+const visible=n=>n!==invisibleNode;
+const validation=context(readFn+'\nglobalThis.getErrors=readErrs;',{
+ document:doc,vis:visible,txt:n=>n.textContent,norm:s=>String(s).trim()
+});
+assert.deepEqual(Array.from(validation.getErrors()),['Please choose at least two options'],'read linked visible ARIA validation only');tests++;
+doc.querySelectorAll=sel=>sel==='[aria-invalid="true"]'?[]:[ariaNode];
+assert.deepEqual(Array.from(validation.getErrors()),['Please choose at least two options'],'existing alert errors stay supported');tests++;
 console.log('PASS '+tests+' engine syntax and regression assertions');
