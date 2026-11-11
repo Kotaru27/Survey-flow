@@ -32,19 +32,21 @@ const previousNav=window.__apNavIntent;
 const waitingForNext=!!(previousNav&&previousNav.fp===nowNavFP&&Date.now()-previousNav.at<1800);
 if(previousNav&&!waitingForNext)delete window.__apNavIntent;
 const allButtons=[...new Set([...clickable,...native.filter(e=>/^(button|link|menuitem)$/i.test(e.getAttribute?.('role')||''))])].filter(vis);
-const nextRegex=/^(next|continue|submit|finish|done|proceed|complete|go|confirm|save and continue|next page|go to next|>|>>|ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢)$/i;
+const nextRegex=/^(next|continue|start|begin|submit|finish|done|proceed|complete|go|confirm|save and continue|next page|go to next|>|>>|›|»|→|ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢)$/i;
 // The carousel's own advance button says "next" too and sits inside the question box.
 // The survey's Next never does, so the box is excluded from the search first and only
 // taken back if there is no other way forward at all.
 const inModelBox=e=>!!(pageModel&&pageModel.box&&pageModel.box.contains&&pageModel.box.contains(e));
-const findNext=()=>allButtons.find(e=>nextRegex.test(txt(e))&&!e.disabled)||allButtons.find(e=>nextRegex.test((e.getAttribute('aria-label')||'').trim())&&!e.disabled)||null;
+const navLabels=e=>[txt(e),e.value,e.getAttribute?.('aria-label'),e.getAttribute?.('title')].map(x=>norm(x||''));
+const navMatches=e=>!e.disabled&&navLabels(e).some(v=>nextRegex.test(v));
+const findNext=()=>allButtons.find(navMatches)||null;
 let next=findNext();
 if(!next||inModelBox(next)){
  const outside=allButtons.filter(e=>!inModelBox(e));
- const hit=outside.find(e=>nextRegex.test(txt(e))&&!e.disabled)||outside.find(e=>nextRegex.test((e.getAttribute('aria-label')||'').trim())&&!e.disabled);
+ const hit=outside.find(navMatches);
  if(hit)next=hit;
 }
-if(!next){const candidates=[...document.querySelectorAll('button,a,div,span,[tabindex],[role]')].filter(e=>vis(e)&&nextRegex.test(txt(e))&&txt(e).length<40);candidates.sort((a,b)=>a.querySelectorAll('*').length-b.querySelectorAll('*').length);next=candidates.find(e=>!inModelBox(e))||candidates[0]||null}
+if(!next){const candidates=[...document.querySelectorAll('button,a,div,span,[tabindex],[role]')].filter(e=>vis(e)&&navMatches(e)&&txt(e).length<40);candidates.sort((a,b)=>a.querySelectorAll('*').length-b.querySelectorAll('*').length);next=candidates.find(e=>!inModelBox(e))||candidates[0]||null}
 let unanswered=0;
 const openQ=[];
 refreshCustom();
