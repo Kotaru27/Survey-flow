@@ -3226,6 +3226,7 @@ func saveReportAs(root,name string,r RunReport) error {
  if r.FinishedAt==""{r.FinishedAt=time.Now().Format(time.RFC3339)}
  b,err:=json.MarshalIndent(r,"","  ")
  if err!=nil{return fmt.Errorf("marshal %s: %w",name,err)}
+ if err=os.MkdirAll(filepath.Join(root,"reports"),0755);err!=nil{return fmt.Errorf("create report directory: %w",err)}
  if err=os.WriteFile(filepath.Join(root,"reports",name),b,0644);err!=nil{return fmt.Errorf("write %s: %w",name,err)}
  return nil
 }
@@ -3234,6 +3235,9 @@ func saveBatchReport(root string,b BatchReport) error {
  defer reportWriteMu.Unlock()
  data,err:=json.MarshalIndent(b,"","  ")
  if err!=nil{return fmt.Errorf("marshal batch report: %w",err)}
+ if err=os.MkdirAll(filepath.Join(root,"reports"),0755);err!=nil{return fmt.Errorf("create report directory: %w",err)}
+ archive:=fmt.Sprintf("batch-report-%s-%03d.json",batchNamespace,batchSeq)
+ if err=os.WriteFile(filepath.Join(root,"reports",archive),data,0644);err!=nil{return fmt.Errorf("write archived batch report: %w",err)}
  if err=os.WriteFile(filepath.Join(root,"reports","batch-report.json"),data,0644);err!=nil{return fmt.Errorf("write batch report: %w",err)}
  return nil
 }
