@@ -45,12 +45,24 @@ async function renderedNow(){
   const pendingStructure=!!document.querySelector('[required],[aria-required="true"],[aria-busy="true"],iframe,frame,input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]),select,textarea,[role="radio"],[role="checkbox"],[role="option"],[role="textbox"],[contenteditable="true"]');
   const currentCommand=/\b(?:please|now)\s+(?:select|choose|pick|rate|rank|enter|indicate|tick|check)\b|\b(?:select|choose|pick|rate|rank|enter|indicate|tick|check)\b[^.!?]{0,60}\bnow\b/i;
   const futureOnly=hasFuture&&!prompt.includes('?')&&!currentCommand.test(prompt)&&!direct.test(current)&&!directive.test(current)&&!pendingStructure;
-  if(futureOnly){
-   const now=Date.now(), key=prompt.slice(0,700);
-   if(!window.__apInfoWait||window.__apInfoWait.key!==key)window.__apInfoWait={key,since:now};
-   if(now-window.__apInfoWait.since>=1500){window.__apRenderPending=false;return true}
-  }else window.__apInfoWait=null;
   const questionExpected=futureOnly||(prompt.length>0&&(direct.test(prompt)||directive.test(prompt)));
+  // Some survey pages are informational yet phrase their heading as a question.
+  // With no answer inputs, the old readiness gate waited forever. Only release
+  // it after a stable grace period, an actual visible navigation control, and
+  // absence of loading/required controls. A late-mounted question wins this
+  // race because the visible-control check at the top runs on every pass.
+  const proceedNames=/^(?:next|continue|start|begin|proceed|submit|finish|go to next|next page|go|>|>>|›|»|→)$/i;
+  const visibleProceed=[...document.querySelectorAll('button,a,input[type="submit"],input[type="button"],[role="button"]')].some(e=>
+    shown(e)&&!e.disabled&&[e.innerText,e.value,e.getAttribute('aria-label'),e.getAttribute('title')]
+      .some(v=>proceedNames.test(norm(v||''))));
+  const busy=[...document.querySelectorAll('[aria-busy="true"],[data-loading="true"],[role="progressbar"]')].some(shown);
+  const infoOnlyReady=questionExpected&&!pendingStructure&&!busy&&visibleProceed;
+  if(infoOnlyReady){
+   const now=Date.now(),key=prompt.slice(0,700)+'|'+location.href;
+   if(!window.__apInfoWait||window.__apInfoWait.key!==key)window.__apInfoWait={key,since:now};
+   const grace=futureOnly?1500:3000;
+   if(now-window.__apInfoWait.since>=grace){window.__apRenderPending=false;return true}
+  }else window.__apInfoWait=null;
   window.__apRenderPending=questionExpected;
   if(questionExpected)return false;
   return !document.querySelector('[aria-required="true"],[required]');
