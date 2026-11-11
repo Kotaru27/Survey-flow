@@ -491,8 +491,22 @@ const context=qt.toLowerCase();
   if(prevOn.length){const diff=usable.filter(e=>prevOn.indexOf(label(e))<0);if(diff.length)usable=diff}
   if(/none of the above|none above/i.test(context)&&!usable.length){usable=active.slice(0,1)}
   if(!usable.length)continue;
+   let verifiedSet=null;
+   // Exact replay is opt-in and only used when every remembered choice remains
+   // visibly available; instructions, validation and explicit pins always win.
+   if(!remembered&&!needMore&&!q.grid&&!reopen.has(qk)&&!redBoldInstructions.length&&!valErr.length&&!ACCORDIONS.length){
+    const labels=verifiedSetMap.get(qkey(qk));
+    if(labels&&labels.length>1){
+     const matches=labels.map(v=>usable.find(e=>qkey(label(e))===v&&!exclusive(e)));
+     if(matches.every(Boolean)&&new Set(matches).size===matches.length){
+      verifiedSet=matches;
+      usable=matches;
+     }
+    }
+   }
 let n;
-   if(needMore){n=1}else{
+   if(verifiedSet){n=verifiedSet.length}
+   else if(needMore){n=1}else{
      const max=Math.max(1,Math.min(Number(P.MultiSelectCount)||1,usable.length));
      if(!remembered)shuffle(usable);
      n=1+rnd(max);
@@ -507,6 +521,10 @@ let n;
    }
 let did=false;
    for(const e of usable.slice(0,n)){if(fireChoice(e)){selected.push(label(e));pairs.push({question:qk,option:qkey(label(e))});pickedTrail.push(qk+'\u0000'+qkey(label(e)));did=true}}
+   if(verifiedSet&&verifiedSet.some(e=>!isOn(e))){
+    INSTRUCTION_BLOCK.count++;
+    INSTRUCTION_BLOCK.details.push({reason:'verified-multi-set-replay-incomplete',question:qk});
+   }
    if(did){acts.push('checkbox');acted++}
    if(q.grid&&did){gridCell++;gridBatchSafe=gridBatchSafe&&g.every(e=>e.matches?.('input[type="checkbox"]'));gridVerified.push(...g.filter(isOn));await Promise.resolve();if(gridChanged())break}
   }}
