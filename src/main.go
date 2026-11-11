@@ -116,7 +116,7 @@ type StepReport struct {
 	Accordion    map[string]any `json:"accordion,omitempty"`
 	Instructions map[string]any `json:"instructions,omitempty"`
 }
-const buildID = "grid-relation-20261102-h"
+const buildID = "cdp-startup-recovery-20261111"
 
 type RunReport struct {
 	Build string `json:"build"`
@@ -317,7 +317,7 @@ func (w *WS) call(id int, method string, params any) (json.RawMessage, error) {
 	}
 }
 func jsonTargets(port int) ([]Target, error) {
-	r, e := http.Get(fmt.Sprintf("http://127.0.0.1:%d/json/list", port))
+	r, e := (&http.Client{Timeout: 4 * time.Second}).Get(fmt.Sprintf("http://127.0.0.1:%d/json/list", port))
 	if e != nil {
 		return nil, e
 	}
@@ -1860,15 +1860,36 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 	// Clear respondent cookies and storage once for every run. This already protects
     // both single and multi-attempt batches; doing it twice caused redundant CDP calls.
     isolateRespondent(w,4,u)
-	if _, e = w.call(6, "Page.navigate", map[string]any{"url": u}); e != nil {
-		logLine(logFile, "Navigation failed: %v", e)
-		report.Status = "navigation_error"
-		report.Errors = append(report.Errors, e.Error())
-		saveRunOutcome(root,&report,logFile)
-		return report
+	// Use a distinct request ID from Storage.clearDataForOrigin (ID 6), so a
+	// late CDP response cannot be confused with the navigation acknowledgement.
+	if _, e = w.call(7, "Page.navigate", map[string]any{"url": u}); e != nil {
+		if isNavigationSocketTimeout(e) {
+			logLine(logFile, "Initial Page.navigate acknowledgement timed out; checking whether Chrome opened the survey before declaring failure.")
+			var recovered *WS
+			var recoveredTarget Target
+			var recoveryErr error
+			recovered, recoveredTarget, recoveryErr = reconnectAfterNavigationTimeout(sess, target, u, 700000, logFile)
+			if recoveryErr == nil {
+				w = recovered
+				target = recoveredTarget
+				logLine(logFile, "Recovered initial survey navigation and resumed in the original browser tab.")
+			} else {
+				report.Status = "navigation_error"
+				report.Errors = append(report.Errors, fmt.Sprintf("Chrome DevTools navigation timed out; reconnect and one bounded retry failed: %v", recoveryErr))
+				logLine(logFile, "Initial survey navigation recovery failed: %v", recoveryErr)
+				saveRunOutcome(root,&report,logFile)
+				return report
+			}
+		} else {
+			logLine(logFile, "Navigation failed: %v", e)
+			report.Status = "navigation_error"
+			report.Errors = append(report.Errors, fmt.Sprintf("Chrome rejected initial navigation: %v", e))
+			saveRunOutcome(root,&report,logFile)
+			return report
+		}
 	}
 	logLine(logFile, "Survey navigation requested: %s", u)
-	waitDocSettled(w, 7)
+	waitDocSettled(w, 8)
 	// capture writes one screenshot for the step just logged, honouring the storage budget.
 	capture := func(step int) bool {
 		if cfg.Screenshots == "none" {
