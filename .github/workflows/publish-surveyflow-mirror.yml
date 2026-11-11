@@ -1,0 +1,55 @@
+name: Publish Survey Flow raw download mirror
+
+on:
+  push:
+    branches:
+      - codex/qa-information-page-navigation-20261111
+    paths:
+      - .github/workflows/publish-surveyflow-mirror.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Retrieve exactly the verified Windows artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/verified-artifact
+          gh run download 43002413902 -R Kotaru27/Survey-flow -n SurveyFlow-Recovery-Console -D /tmp/verified-artifact
+          unzip -t /tmp/verified-artifact/SurveyFlow-Recovery-Console.zip
+          echo "ee1db2411c1eb651ba86557d2a47b9cdd666691b425db44de52eab238b4e9b3e  -" |
+            while read -r expected dash; do
+              actual="$(unzip -p /tmp/verified-artifact/SurveyFlow-Recovery-Console.zip SurveyFlow.exe | sha256sum | cut -d' ' -f1)"
+              test "$actual" = "$expected" || { echo 'Wrong EXE binary'; exit 1; }
+            done
+      - name: Publish only ZIP and checksum to dedicated downloads branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/surveyflow-downloads
+          cd /tmp/surveyflow-downloads
+          git init -b surveyflow-downloads
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp /tmp/verified-artifact/SurveyFlow-Recovery-Console.zip SurveyFlow-Windows-Portable.zip
+          sha256sum SurveyFlow-Windows-Portable.zip > SHA256SUMS.txt
+          cat > README.md <<'EOF'
+          # Survey Flow downloads
+          This branch contains only the verified Windows portable package.
+          The ZIP was copied unmodified from successful GitHub Actions run 43002413902
+          (application commit 7414a3ca9867ed68d701e7e02ac7e69e92d8f6d0).
+          Extract the ZIP and launch SurveyFlow.exe. Use authorized QA test surveys.
+          EOF
+          git add SurveyFlow-Windows-Portable.zip SHA256SUMS.txt README.md
+          git commit -m "Host verified Windows portable download independently of chat attachments"
+          gh auth setup-git
+          git remote add origin https://github.com/Kotaru27/Survey-flow.git
+          git push origin HEAD:refs/heads/surveyflow-downloads
+          echo "Raw file: https://raw.githubusercontent.com/Kotaru27/Survey-flow/surveyflow-downloads/SurveyFlow-Windows-Portable.zip"
