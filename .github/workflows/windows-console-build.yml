@@ -129,6 +129,12 @@ jobs:
           Write-Host "PASS exact final EXE SHA256 $after and synthetic private config scoping"
           Copy-Item -Recurse config release/config
           Copy-Item README.md, SETUP.txt, QUESTION_TYPES.md, QA_REPORT.md release/
+          # The executable smoke test creates a launcher log. Never ship CI
+          # runtime state, test IDs or profile directories to users.
+          foreach ($runtimeDir in @('data', 'reports', 'screenshots')) {
+            $runtimePath = Join-Path release $runtimeDir
+            if (Test-Path $runtimePath) { Remove-Item $runtimePath -Recurse -Force }
+          }
           Compress-Archive -Path release/* -DestinationPath SurveyFlow-Recovery-Console.zip -Force
       - name: Verify Windows QA recovery package
         shell: pwsh
@@ -143,6 +149,9 @@ jobs:
             $entries = @($archive.Entries | ForEach-Object FullName)
             if (-not ($entries -contains 'SurveyFlow.exe')) { throw 'Recovery archive lacks SurveyFlow.exe' }
             if ($entries -contains 'SurveyAutopilot.exe') { throw 'Recovery archive contains obsolete executable name' }
+            if ($entries | Where-Object { $_ -match '^(data|reports|screenshots)/' }) {
+              throw 'Recovery archive must not contain CI runtime data'
+            }
           } finally { $archive.Dispose() }
           Write-Host 'PASS archive includes renamed Windows executable and QA documentation'
       - uses: actions/upload-artifact@v4
