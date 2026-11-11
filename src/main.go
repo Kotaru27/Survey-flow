@@ -1259,6 +1259,7 @@ type AppConfig struct {
 	WindowPauseMs           int    `json:"windowPauseMs"`           // rest between windows
 	Incognito               bool   `json:"incognito"`               // batch windows open incognito
 	BrowserMode             string `json:"browserMode"`             // auto (in-window) | external | embedded
+    ReplayVerifiedSets      bool   `json:"replayVerifiedSets"` // opt-in to exact confirmed multi-select replay
 }
 
 // A config file saved by a Windows editor can carry a byte-order mark, and a single
@@ -2118,6 +2119,11 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 			// config/red-herring.json, before anything else, and never re-opened: a trap
 			// answer here is the one mistake that cannot be learned back out of.
 			"redHerring": redHerringRules}
+        // Preserve answer variety unless the QA operator explicitly requests
+        // an exact replay of previously verified successful checkbox sets.
+        if cfg.ReplayVerifiedSets && persona.QASeed=="" {
+            memPayload["preferSets"]=mem.preferSetsFor(memFP)
+        }
 		forceUsed := forceNext
 		forceNext = false // this step spent the forced Next
 		persona.QAStep=step
@@ -2943,14 +2949,16 @@ END_RUN:
 		// this profile instead of guessing it again.
 		replayable := replayablePairs(attemptPairs)
 		_, done := mem.noteAttempt(memFP, replayable, "completed")
+        verifiedSets:=verifiedMultiSets(report.StepsLog,attemptStart)
+        storedSets:=mem.noteCompletedSets(memFP,verifiedSets)
 		saveErr := mem.save()
 		if saveErr != nil {
 			report.Errors = append(report.Errors, "could not save completed-run memory: "+saveErr.Error())
 			logLine(logFile, "Completed, but the study memory could not be saved: %v", saveErr)
 		}
 		if done && saveErr == nil {
-			report.Learned = append(report.Learned, fmt.Sprintf("remembered %d answer(s) that completed this survey", len(replayable)))
-			logLine(logFile, "Completed with %d unambiguous remembered selection(s) for this survey.", len(replayable))
+			report.Learned = append(report.Learned, fmt.Sprintf("remembered %d single-choice answer(s) and %d verified multi-choice set(s)", len(replayable),storedSets))
+			logLine(logFile, "Completed with %d remembered single-choice selection(s) and %d verified multi-choice set(s).",len(replayable),storedSets)
 			if n := mem.avoidCount(memFP); n > 0 {
 				logLine(logFile, "%d avoid rule(s) still stand for questions this run never answered.", n)
 			}
@@ -3023,6 +3031,36 @@ func promptCompletes(in *bufio.Reader, logFile *os.File) int {
 			fmt.Printf("Enter a whole number between 1 and %d.\n", maxCompletes)
 		}
 	}
+}
+
+// verifiedMultiSets collects complete checkbox states from successfully submitted pages,
+// never individual click events or failed/unanswered/revisited candidate states.
+// Only the final successful attempt is eligible when the same run retried screen-outs.
+func verifiedMultiSets(steps []StepReport,attemptStart int) map[string][]string {
+ out:=map[string][]string{}
+ for _,step:=range steps {
+  if step.Step<attemptStart||!isNavAction(step.Action)||step.Unanswered!=0||
+   len(step.Validation)>0||step.NeedsHuman||len(step.Instructions)>0{continue}
+  for _,q:=range step.Questions {
+   if q.Type!="multi"||q.Grid||q.OptionsTruncated||q.On<2||q.N<q.On||
+    q.N>40||len(q.ObservedOptions)!=q.N{continue}
+   key:=strings.ToLower(strings.TrimSpace(q.FullKey))
+   if key==""{continue}
+   selected:=make([]string,0,q.On)
+   unique:=map[string]bool{}
+   valid:=true
+   for _,opt:=range q.ObservedOptions {
+    if !opt.Selected{continue}
+    label:=strings.TrimSpace(opt.Label)
+    normalized:=strings.ToLower(label)
+    if opt.Disabled||label==""||len(label)>=200||unique[normalized]{valid=false;break}
+    unique[normalized]=true
+    selected=append(selected,label)
+   }
+   if valid&&len(selected)==q.On {out[key]=selected}
+  }
+ }
+ return out
 }
 
 // mergeStepAnswers folds the answers a widget committed only on the re-read after a real
