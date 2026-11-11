@@ -1,0 +1,80 @@
+name: Publish verified fast navigation and text readiness download
+
+on:
+  push:
+    branches:
+      - codex/fast-navigation-text-regression-20261111
+    paths:
+      - .github/workflows/publish-fast-next-20261111.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify exact passed source and download Windows package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run=43009757345
+          expected_commit=89c6871a47461b33a4f003fb52b833cf260bece0
+          test "$(gh run view "$run" -R Kotaru27/Survey-flow --json conclusion --jq .conclusion)" = "success"
+          test "$(gh run view "$run" -R Kotaru27/Survey-flow --json headSha --jq .headSha)" = "$expected_commit"
+          mkdir -p /tmp/verified-exe /tmp/verified-portable
+          gh run download "$run" -R Kotaru27/Survey-flow -n SurveyFlow-Verified-EXE -D /tmp/verified-exe
+          gh run download "$run" -R Kotaru27/Survey-flow -n SurveyFlow-Recovery-Console -D /tmp/verified-portable
+          test -s /tmp/verified-exe/SurveyFlow.exe
+          test -s /tmp/verified-portable/SurveyFlow-Recovery-Console.zip
+          unzip -t /tmp/verified-portable/SurveyFlow-Recovery-Console.zip
+          expected=259d35f5ad87026e8978c85fc9a4069aec690aea7a5f6d71ece51a7f11b7a865
+          direct="$(sha256sum /tmp/verified-exe/SurveyFlow.exe | cut -d' ' -f1)"
+          packed="$(unzip -p /tmp/verified-portable/SurveyFlow-Recovery-Console.zip SurveyFlow.exe | sha256sum | cut -d' ' -f1)"
+          test "$direct" = "$expected"
+          test "$packed" = "$expected"
+          cp /tmp/verified-portable/SurveyFlow-Recovery-Console.zip SurveyFlow-Fast-Next-20261111.zip
+          sha256sum SurveyFlow-Fast-Next-20261111.zip > SHA256SUMS.txt
+          echo "Verified EXE SHA256: $direct"
+          cat SHA256SUMS.txt
+      - name: Publish long-lived GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=v2026.11.11-fast-navigation-text-readiness
+          gh release create "$tag" SurveyFlow-Fast-Next-20261111.zip SHA256SUMS.txt \
+             -R Kotaru27/Survey-flow \
+             --target 89c6871a47461b33a4f003fb52b833cf260bece0 \
+             --title "Survey Flow - fast navigation and text-only page readiness" \
+             --notes "Built from passing Windows Actions run 43009757345. Initial navigation now starts recovery after 5 seconds rather than 30. Question-like information-only pages can advance after a bounded 3-second render grace, and accessible Next labels including icon-only buttons are supported. Genuine delayed controls and validations remain protected. The included EXE SHA256 is 259d35f5ad87026e8978c85fc9a4069aec690aea7a5f6d71ece51a7f11b7a865. Synthetic Go, browser, and Windows build tests passed. Use only authorized QA test surveys." \
+             --latest
+          gh release view "$tag" -R Kotaru27/Survey-flow --json url,assets --jq '{url:.url,assets:[.assets[].name]}'
+          gh release view "$tag" -R Kotaru27/Survey-flow --json assets --jq '.assets[].name' | grep -x SurveyFlow-Fast-Next-20261111.zip
+      - name: Update independent raw file mirror
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          git clone --depth 1 --branch surveyflow-downloads https://github.com/Kotaru27/Survey-flow.git /tmp/sf-mirror
+          cd /tmp/sf-mirror
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp "$GITHUB_WORKSPACE/SurveyFlow-Fast-Next-20261111.zip" SurveyFlow-Fast-Next-20261111.zip
+          cp "$GITHUB_WORKSPACE/SurveyFlow-Fast-Next-20261111.zip" SurveyFlow-Windows-Portable.zip
+          sha256sum SurveyFlow-Fast-Next-20261111.zip SurveyFlow-Windows-Portable.zip > SHA256SUMS.txt
+          cat > README.md <<'EOF'
+          # Survey Flow portable Windows download
+          Current verified Windows build: fast navigation and text-page readiness, 2026-11-11.
+          Source commit: 89c6871a47461b33a4f003fb52b833cf260bece0
+          Verified Windows Actions run: 43009757345
+          EXE SHA256: 259d35f5ad87026e8978c85fc9a4069aec690aea7a5f6d71ece51a7f11b7a865
+          Extract ZIP and run SurveyFlow.exe for authorized QA testing.
+          EOF
+          git add SurveyFlow-Fast-Next-20261111.zip SurveyFlow-Windows-Portable.zip SHA256SUMS.txt README.md
+          git commit -m "Update public download to verified fast navigation and text readiness build"
+          git push origin HEAD:refs/heads/surveyflow-downloads
+          echo "Raw file: https://raw.githubusercontent.com/Kotaru27/Survey-flow/surveyflow-downloads/SurveyFlow-Fast-Next-20261111.zip"
