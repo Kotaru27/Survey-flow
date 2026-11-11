@@ -1,8 +1,8 @@
-SURVEY AUTOPILOT  |  STYLED CONSOLE · PROGRESSION FIX
+SURVEY FLOW  |  QA CONSOLE
 =========================================
 
 1. Extract this ZIP to a folder you can write to.
-2. Double-click SurveyAutopilot.exe.
+2. Double-click SurveyFlow.exe.
 3. Paste your authorized QA survey URL.
 4. Select the number of completed test runs (Enter = 1).
 5. Watch the live steps, warnings and results in the styled console.
