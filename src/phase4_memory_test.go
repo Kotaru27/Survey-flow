@@ -35,3 +35,25 @@ func TestPhase4UnqualifiedAttemptsCannotSaveSuccessfulSets(t *testing.T){
  if n:=s.noteCompletedSets(fp,map[string][]string{"brands":{"Alpha","Beta"}});n!=0{t.Fatal("unqualified answer set recorded as successful")}
  if len(s.preferSetsFor(fp))!=0{t.Fatal("unqualified set available for replay")}
 }
+
+func TestPhase4VerifiedMultiSetsRequireSubmittedCheckedSnapshot(t *testing.T){
+ good:=QuestionState{
+  FullKey:"Select brands",Type:"multi",N:3,On:2,
+  ObservedOptions:[]ObservedOption{
+   {Label:"Alpha",Selected:true},
+   {Label:"Beta",Selected:false},
+   {Label:"Gamma",Selected:true},
+  },
+ }
+ report:=StepReport{Step:5,Action:"checkbox+next",Unanswered:0,Questions:[]QuestionState{good}}
+ if got:=verifiedMultiSets([]StepReport{report},1)["select brands"];!reflect.DeepEqual(got,[]string{"Alpha","Gamma"}){t.Fatalf("valid submitted snapshot: %v",got)}
+ cases:=[]struct{name string;step StepReport}{
+  {"old-attempt",StepReport{Step:4,Action:"checkbox+next",Questions:[]QuestionState{good}}},
+  {"not-submitted",StepReport{Step:5,Action:"checkbox",Questions:[]QuestionState{good}}},
+  {"unanswered",StepReport{Step:5,Action:"checkbox+next",Unanswered:1,Questions:[]QuestionState{good}}},
+  {"validation",StepReport{Step:5,Action:"checkbox+next",Validation:[]string{"Invalid"},Questions:[]QuestionState{good}}},
+  {"incomplete",StepReport{Step:5,Action:"checkbox+next",Questions:[]QuestionState{{FullKey:good.FullKey,Type:"multi",N:3,On:3,ObservedOptions:good.ObservedOptions}}}},
+  {"grid",StepReport{Step:5,Action:"checkbox+next",Questions:[]QuestionState{{FullKey:good.FullKey,Type:"multi",Grid:true,N:3,On:2,ObservedOptions:good.ObservedOptions}}}},
+ }
+ for _,tc:=range cases{if got:=verifiedMultiSets([]StepReport{tc.step},5);len(got)>0{t.Errorf("%s falsely remembered %v",tc.name,got)}}
+}
