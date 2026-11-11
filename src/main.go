@@ -1527,7 +1527,7 @@ func runConsole(root string, cfg AppConfig) {
 			_ = logFile.Close()
 		}
 	}()
-		logLine(logFile, "Survey Autopilot — portable console QA launcher")
+		logLine(logFile, "Survey Flow — portable console QA launcher")
 	logLine(logFile, "Application root: %s", root)
 	view.prompt("01   STUDY LINK", "Paste the authorized http:// or https:// testing URL.")
 	u, err := in.ReadString('\n')
