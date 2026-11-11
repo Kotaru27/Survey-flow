@@ -36,7 +36,7 @@ type consoleRenderer struct {
 func newConsoleRenderer(out io.Writer, colored bool)*consoleRenderer{return &consoleRenderer{out:out,colored:colored,percent:-1,width:consoleWidth}}
 func(r *consoleRenderer) stylize(c,s string) string {if r.colored{return c+s+reset};return s}
 func(r *consoleRenderer) println(s string){_,_=fmt.Fprintln(r.out,s)}
-func(r *consoleRenderer) header(){r.mu.Lock();defer r.mu.Unlock();r.println("\n  "+r.stylize(mint+bold,"SURVEY AUTOPILOT"));r.println("")}
+func(r *consoleRenderer) header(){r.mu.Lock();defer r.mu.Unlock();r.println("\n  "+r.stylize(mint+bold,"SURVEY FLOW"));r.println("")}
 func(r *consoleRenderer) section(title,detail string){r.mu.Lock();defer r.mu.Unlock();r.println("  "+r.stylize(muted,safeConsoleText(detail,72)))}
 func(r *consoleRenderer) prompt(label,hint string){r.mu.Lock();defer r.mu.Unlock();r.println("\n  "+r.stylize(ink+bold,label));if hint!=""{r.println("  "+r.stylize(muted,hint))};_,_=fmt.Fprint(r.out,"  "+r.stylize(mint,"› "))}
 func(r *consoleRenderer) detail(label,value string){r.mu.Lock();defer r.mu.Unlock();r.println("  "+r.stylize(muted,label+": ")+safeConsoleText(value,50))}
