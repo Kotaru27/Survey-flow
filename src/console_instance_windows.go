@@ -31,5 +31,5 @@ func acquireSingleInstance(name string) bool {
 	return true
 }
 func activateExistingInstance() {
-	fmt.Println("Survey Autopilot is already running. Switch to the open window.")
+	fmt.Println("Survey Flow is already running. Switch to the open window.")
 }
