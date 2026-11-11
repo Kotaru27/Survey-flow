@@ -1,4 +1,4 @@
-name: Survey Autopilot Windows Console
+name: Survey Flow Windows Console
 on:
   workflow_dispatch:
   push:
@@ -101,38 +101,38 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
-          go build -trimpath -ldflags '-s -w' -o release/SurveyAutopilot.exe ./src
+          go build -trimpath -ldflags '-s -w' -o release/SurveyFlow.exe ./src
           if ($LASTEXITCODE -ne 0) { throw 'Windows console build failed' }
-          ./scripts/embed-icon.ps1 -Executable release/SurveyAutopilot.exe
-          $before = (Get-FileHash release/SurveyAutopilot.exe -Algorithm SHA256).Hash
+          ./scripts/embed-icon.ps1 -Executable release/SurveyFlow.exe
+          $before = (Get-FileHash release/SurveyFlow.exe -Algorithm SHA256).Hash
           New-Item -ItemType Directory -Force release/config | Out-Null
           $synthetic = '{"studyUrl":"https://survey.example.test/one","rules":[{"contains":"local synthetic rule"}],"globalRules":[{"contains":"This synthetic verification prompt is deliberately longer than forty characters.","kind":"multi_exact","strict":true,"answers":["Alpha"],"never":["Beta"]}]}'
           Set-Content -Path release/config/study-key.json -Value $synthetic -Encoding utf8
-          $matching = & ./release/SurveyAutopilot.exe --verify-study-config 'https://survey.example.test/one'
+          $matching = & ./release/SurveyFlow.exe --verify-study-config 'https://survey.example.test/one'
           if ($LASTEXITCODE -ne 0 -or $matching -notmatch 'Loaded study checks: 2') { throw 'Private matching study rules failed' }
-          $other = & ./release/SurveyAutopilot.exe --verify-study-config 'https://survey.example.test/other'
+          $other = & ./release/SurveyFlow.exe --verify-study-config 'https://survey.example.test/other'
           if ($LASTEXITCODE -ne 0 -or $other -notmatch 'Loaded study checks: 1') { throw 'Private study scoping failed' }
           Remove-Item release/config/study-key.json
           Remove-Item release/config -Force
-          $output = @('invalid', '') | & ./release/SurveyAutopilot.exe
+          $output = @('invalid', '') | & ./release/SurveyFlow.exe
           if ($LASTEXITCODE -ne 0) { throw 'Executable launch failed' }
           $text = $output -join "`n"
-          if ($text -notmatch 'SURVEY AUTOPILOT' -or $text -notmatch 'Invalid link') { throw 'Unexpected executable smoke output' }
+          if ($text -notmatch 'SURVEY FLOW' -or $text -notmatch 'Invalid link') { throw 'Unexpected executable smoke output' }
           if ($text -match 'grid-relation|Build version|compiler') { throw 'Technical build information visible' }
           Write-Host 'PASS executable console launch and clean setup output'
-          $after = (Get-FileHash release/SurveyAutopilot.exe -Algorithm SHA256).Hash
+          $after = (Get-FileHash release/SurveyFlow.exe -Algorithm SHA256).Hash
           if ($before -ne $after) { throw 'Executable changed after verification' }
           Write-Host "PASS exact final EXE SHA256 $after and synthetic private config scoping"
           Copy-Item -Recurse config release/config
           Copy-Item README.md, SETUP.txt, QUESTION_TYPES.md, QA_REPORT.md release/
-          Compress-Archive -Path release/* -DestinationPath SurveyAutopilot-Recovery-Console.zip -Force
+          Compress-Archive -Path release/* -DestinationPath SurveyFlow-Recovery-Console.zip -Force
       - uses: actions/upload-artifact@v4
         with:
-          name: SurveyAutopilot-Recovery-Console
-          path: SurveyAutopilot-Recovery-Console.zip
+          name: SurveyFlow-Recovery-Console
+          path: SurveyFlow-Recovery-Console.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: SurveyAutopilot-Verified-EXE
-          path: release/SurveyAutopilot.exe
+          name: SurveyFlow-Verified-EXE
+          path: release/SurveyFlow.exe
           if-no-files-found: error
