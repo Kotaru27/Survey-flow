@@ -27,13 +27,25 @@ const endPage=/\/BCEndPages\//i.test(location.href);
 // Qualification is confirmed only by the explicit survey qualification end URL.
 const endQual=/(?:^|[\/-])Qual\.html(?:[?#]|$)/i.test(location.href);
 const endTerm=endPage&&/-Term\b/i.test(location.href);
-const screenText=/profile does not correspond|does not correspond to the one|you (do not|don't) (qualify|match)|does not qualify|not qualified|not eligible|ineligible|unfortunately[\s\S]{0,140}(qualify|correspond|eligible|profile)/i.test(lower);
-const termination=endTerm||screenText||/quota (full|filled)|screen ?out|you do not qualify|not qualify|terminated|disqualified|survey is closed|quota has been reached/.test(lower);
-const returningSession=/[?&#]returning=(yes|true)/i.test(location.href)||/already (completed|participated|taken|finished)|duplicate (test )?id|this (id|code) (was|has been) (already )?used|id (is )?(already|in use)/i.test(body);
+// A test navigator or survey debug panel can contain terms like "screen out",
+// "terminated" and "not eligible" even while the respondent has an ordinary Next
+// button. When present, the document's main region is the respondent-facing text.
+// Do not classify an active question/information page as an end page from a
+// free-text match; URL-verified end pages remain terminal regardless of buttons.
+const respondentRegion=document.querySelector('main,[role="main"]');
+const respondentText=norm((respondentRegion&&respondentRegion.innerText)||body).toLowerCase();
+const proceedRe=/^(next|continue|start|begin|proceed|submit|finish|go to next|>|>>|ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢)$/i;
+const hasProceed=[...clickable,...native.filter(e=>/^(button|link|menuitem)$/i.test(e.getAttribute?.('role')||''))].some(e=>
+ !e.disabled && [txt(e),e.value,e.getAttribute?.('aria-label'),e.getAttribute?.('title')].some(v=>proceedRe.test(norm(v||''))));
+const screenText=/profile does not correspond|does not correspond to the one|you (do not|don't) (qualify|match)|does not qualify|not qualified|not eligible|ineligible|unfortunately[\s\S]{0,140}(qualify|correspond|eligible|profile)/i.test(respondentText);
+// A bare "screenout", "terminated" or "disqualified" field name is metadata,
+// not a respondent-visible outcome. Explicit rejection wording is required.
+const explicitEndText=screenText||/quota (?:is )?(?:full|filled)|you (?:have been|were) screened out|survey is closed|quota has been reached/i.test(respondentText);
+const termination=endTerm||(!hasProceed&&explicitEndText);
+const terminationEvidence=endTerm?'termination-url':termination?'respondent-message-no-next':'';
+const returningSession=/[?&#]returning=(yes|true)/i.test(location.href)||/already (completed|participated|taken|finished)|duplicate (test )?id|this (id|code) (was|has been) (already )?used|id (is )?(already|in use)/i.test(respondentText);
 const openLeft=textInputs.filter(e=>!e.disabled&&!e.value).length;
 const workLeft=nativeRadios.length+roleRadios.length+nativeChecks.length+roleChecks.length+selects.length+openLeft;
-const proceedRe=/^(next|continue|start|begin|proceed|submit|finish|go to next|>|>>|ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢)$/i;
-const hasProceed=[...clickable,...native.filter(e=>/^(button|link|menuitem)$/i.test(e.getAttribute?.('role')||''))].some(e=>proceedRe.test(txt(e))&&!e.disabled);
 const thanksPage=/(thank you( very much)? for your time|thank you for (taking|completing|participating|sharing)|thanks for (taking|completing)|we appreciate your (time|participation))/.test(lower);
 const terminal=thanksPage&&workLeft===0&&!hasProceed;
 const answered=__ANSWERED__;
