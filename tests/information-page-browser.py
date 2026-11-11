@@ -32,4 +32,23 @@ with sync_playwright() as p:
     assert page.locator('input[type=radio]').is_checked(),last
     assert page.locator('#next').get_attribute('data-clicked')=='yes',last
     print('PASS delayed current question is answered before advancing')
+    # A legitimate text-only question/information screen can have a question-mark
+    # heading but no answer inputs. It must advance after a bounded render grace.
+    page.set_content(base % ('What happens next?', '<p>The following page will explain the next section.</p>'))
+    page.evaluate('delete window.__apNavIntent; delete window.__apInfoWait')
+    d=page.evaluate(engine)
+    assert page.locator('#next').get_attribute('data-clicked') is None,d
+    for attempt in range(8):
+        page.wait_for_timeout(500)
+        d=page.evaluate(engine)
+        if page.locator('#next').get_attribute('data-clicked')=='yes': break
+    assert page.locator('#next').get_attribute('data-clicked')=='yes',d
+    assert d['action'].split('+')[-1]=='next',d
+    print('PASS text-only question prompt with no answer controls advances after grace')
+    # A Next action can be an icon whose accessible text is on title, not the glyph.
+    page.set_content('<style>button{padding:20px}</style><p>Study information</p><button id="next" title="Next" onclick="this.dataset.clicked=\'yes\'"><span aria-hidden="true">›</span></button>')
+    page.evaluate('delete window.__apNavIntent; delete window.__apInfoWait')
+    d=page.evaluate(engine)
+    assert page.locator('#next').get_attribute('data-clicked')=='yes',d
+    print('PASS icon-only Next using title advances correctly')
     browser.close()
