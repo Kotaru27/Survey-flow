@@ -1663,7 +1663,11 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 				report.Errors = append(report.Errors, lerr.Error())
 			}
 			saveRunOutcome(root,&report,logFile)
-			saveReportAs(root, runReportName(runNo, total), report)
+            if err:=saveReportAs(root,runReportName(runNo,total),report);err!=nil {
+              report.Status="report_write_error"
+              report.Errors=append(report.Errors,err.Error())
+              logLine(logFile,"ERROR: archived QA report could not be saved: %v",err)
+            }
 			batch.Runs = append(batch.Runs, BatchRun{Run: runNo, Window: windowNo, Status: report.Status, Report: runReportName(runNo, total), Errors: report.Errors})
 			batch.StatusCounts[report.Status]++
 			sess.stop(logFile, true)
@@ -1678,6 +1682,12 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 			if consoleUI != nil { consoleUI.startRun(runNo, batch.Completed) }
 			started := time.Now()
 			report := runComplete(root, u, readPersonaForRun(root,runNo), mem, logFile, runNo, total, cfg, sess, inWindow == 0)
+            // Archive even single-complete jobs before reporting success.
+            if err:=saveReportAs(root,runReportName(runNo,total),report);err!=nil {
+              report.Status="report_write_error"
+              report.Errors=append(report.Errors,err.Error())
+              logLine(logFile,"ERROR: archived QA report could not be saved: %v",err)
+            }
 			if progress != nil {
 				// The window counts completes, not runs: a run that was screened out has
 				// not put one in the hand, and a counter that said otherwise was counting
@@ -1693,7 +1703,6 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 				consoleUI.runFinished(runNo, report.Status, batch.Completed, total)
 			}
 			if total > 1 {
-				saveReportAs(root, runReportName(runNo, total), report)
 				logLine(logFile, "Run %d finished: %s (test ID %s) - %d of %d completes in hand", runNo, report.Status, report.ReentryID, batch.Completed, total)
 				for _, l := range report.Learned {
 					logLine(logFile, "Run %d learned: %s", runNo, l)
@@ -1713,7 +1722,7 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 			if report.Status == "screenout_pattern" || report.Status == "screenout_or_termination" {
 				logLine(logFile, "Run %d: %s (%d of %d completes so far); continuing until %d completes are in.", runNo-1, report.Status, batch.Completed, total, total)
 			}
-			if runNo <= total && inWindow < perWindow && cfg.BreathingMs > 0 {
+			if runNo <= attemptCeiling && batch.Completed < total && inWindow < perWindow && cfg.BreathingMs > 0 {
 				logLine(logFile, "Breathing %d ms before run %d.", cfg.BreathingMs, runNo)
 				time.Sleep(time.Duration(cfg.BreathingMs) * time.Millisecond)
 			}
@@ -1746,7 +1755,10 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 	}
 	batch.FinishedAt = time.Now().Format(time.RFC3339)
 	batch.AvoidRules = mem.avoidCount(memoryFingerprint(u))
-	saveBatchReport(root, batch)
+	if err:=saveBatchReport(root,batch);err!=nil {
+      batch.StatusCounts["report_write_error"]++
+      logLine(logFile,"ERROR: batch QA report could not be saved: %v",err)
+    }
 	if total > 1 {
 		logLine(logFile, "Batch finished: %d of %d completed across %d window(s). Report: %s", batch.Completed, total, windowCount, filepath.Join(root, "reports", "batch-report.json"))
 		if batch.AvoidRules > 0 {
