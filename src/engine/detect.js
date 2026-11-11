@@ -34,7 +34,7 @@ const endTerm=endPage&&/-Term\b/i.test(location.href);
 // free-text match; URL-verified end pages remain terminal regardless of buttons.
 const respondentRegion=document.querySelector('main,[role="main"]');
 const respondentText=norm((respondentRegion&&respondentRegion.innerText)||body).toLowerCase();
-const proceedRe=/^(next|continue|start|begin|proceed|submit|finish|go to next|>|>>|ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢)$/i;
+const proceedRe=/^(next|continue|start|begin|proceed|submit|finish|go to next|next page|>|>>|›|»|→|ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢)$/i;
 const hasProceed=[...clickable,...native.filter(e=>/^(button|link|menuitem)$/i.test(e.getAttribute?.('role')||''))].some(e=>
  !e.disabled && [txt(e),e.value,e.getAttribute?.('aria-label'),e.getAttribute?.('title')].some(v=>proceedRe.test(norm(v||''))));
 const screenText=/profile does not correspond|does not correspond to the one|you (do not|don't) (qualify|match)|does not qualify|not qualified|not eligible|ineligible|unfortunately[\s\S]{0,140}(qualify|correspond|eligible|profile)/i.test(respondentText);
