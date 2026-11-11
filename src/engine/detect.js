@@ -1,4 +1,17 @@
-function readErrs(){return [...new Set([...document.querySelectorAll('[role="alert"],[aria-live="assertive"],.error,.errors,.validation-error,[class*="error"],[class*="Error"],[class*="validation"],[class*="Validation"]')].filter(vis).map(txt).filter(Boolean))].slice(0,12)}
+// Read explicit validation messages even when the survey links them through ARIA
+// rather than rendering a visible .error / role=alert element.
+function readErrs(){
+ const nodes=[...document.querySelectorAll('[role="alert"],[aria-live="assertive"],.error,.errors,.validation-error,[class*="error"],[class*="Error"],[class*="validation"],[class*="Validation"]')];
+ for(const field of document.querySelectorAll('[aria-invalid="true"]')){
+  const ids=field.getAttribute('aria-errormessage')||field.getAttribute('aria-describedby')||'';
+  for(const id of ids.trim().split(/\s+/)){
+   if(!id)continue;
+   const node=document.getElementById(id);
+   if(node)nodes.push(node);
+  }
+ }
+ return [...new Set(nodes.filter(vis).map(txt).map(norm).filter(Boolean))].slice(0,12);
+}
 const valErr=readErrs();
 const needMore=/please select|please choose|please tick|at least (one|two|three|1|2|3)|select at least|choose at least|tick at least|must select|must choose/i.test(valErr.join(' '));
 // A step can land while the document has no body yet - the survey navigated underneath us
