@@ -164,4 +164,22 @@ with sync_playwright() as p:
  d=page.evaluate(script({'preferSets':{key:['Alpha','Gamma']}}))
  assert page.locator('input[name=brands]:checked').count()==1,d
  print('PASS missing saved option falls back without inventing a checkbox')
+ # Information pages with ordinary Next must not inherit false screen-outs from
+ # survey developer/test-navigator metadata. The test does not access a live study.
+ page.close();page=b.new_page(viewport={'width':1100,'height':760},device_scale_factor=1)
+ info='''<main><h2>Welcome to the study</h2><p>Please read the information below before continuing.</p><button id=next onclick="this.dataset.count=String(1+Number(this.dataset.count||0))">Next</button></main><aside><h3>Test Navigator</h3><p>Screen out / quota checks / termination status [HIDDEN DATA]</p></aside>'''
+ setpage(page,info)
+ page.evaluate('delete window.__apNavIntent')
+ d=page.evaluate(script())
+ assert d['termination'] is False,('debug text was mistaken for actual termination',d)
+ assert page.locator('#next').get_attribute('data-count')=='1',('information page did not advance',d)
+ assert d['action'].split('+')[-1]=='next',d
+ print('PASS information-only page advances despite test-navigator screenout metadata')
+ # Genuine screen-out without an active continuation remains terminal.
+ setpage(page,'''<main><h2>You do not qualify for this study</h2><p>Unfortunately you are not eligible.</p></main>''')
+ page.evaluate('delete window.__apNavIntent')
+ d=page.evaluate(script())
+ assert d['termination'] is True,d
+ print('PASS genuine qualification failure without Next is still terminal')
+
  b.close()
