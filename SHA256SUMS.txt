@@ -1,1 +1,2 @@
-1bf3ee8d9542f33a8ebb452dc83272087af53e4edde73213ce628f37a9374e1a  SurveyFlow-Windows-Portable.zip
+f4fe18f0191c3512fe5baa911ce6da0744cdcfe0c5b09f5db23f2ea9d37d6e65  SurveyFlow-CDP-Recovery-20261111.zip
+f4fe18f0191c3512fe5baa911ce6da0744cdcfe0c5b09f5db23f2ea9d37d6e65  SurveyFlow-Windows-Portable.zip
