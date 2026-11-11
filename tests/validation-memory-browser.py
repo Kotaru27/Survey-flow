@@ -153,12 +153,14 @@ with sync_playwright() as p:
  found=[q for q in baseline['questions'] if q['type']=='multi' and q['n']==3]
  assert len(found)==1,baseline
  key=found[0]['fullKey']
- setpage(page,multi);d=page.evaluate(script({'preferSets':{key:['Alpha','Gamma']}}))
+ setpage(page,multi);page.evaluate('delete window.__apNavIntent')
+ d=page.evaluate(script({'preferSets':{key:['Alpha','Gamma']}}))
  chosen=[loc.get_attribute('value') for loc in page.locator('input[name=brands]:checked').all()]
  assert chosen==['a','c'],(chosen,d)
  assert page.locator('#next').get_attribute('data-count')=='1',d
  print('PASS complete verified multi-select replay with checked-state confirmation')
  setpage(page,multi.replace('<label><input type=checkbox name=brands value=c>Gamma</label>',''))
+ page.evaluate('delete window.__apNavIntent')
  d=page.evaluate(script({'preferSets':{key:['Alpha','Gamma']}}))
  assert page.locator('input[name=brands]:checked').count()==1,d
  print('PASS missing saved option falls back without inventing a checkbox')
