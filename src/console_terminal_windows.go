@@ -46,7 +46,7 @@ func prepareConsole() bool {
 	if success == 0 {
 		return false
 	} // redirected/non-interactive output
-	title, _ := syscall.UTF16PtrFromString("Survey Autopilot  |  QA Console")
+	title, _ := syscall.UTF16PtrFromString("Survey Flow  |  QA Console")
 	setTitle.Call(uintptr(unsafe.Pointer(title)))
 	setCodePage.Call(65001)
 	success, _, _ = setMode.Call(handle, uintptr(mode|enableVirtualTerminalProcessing))
