@@ -238,8 +238,14 @@ func (w *WS) sendText(s string) error {
 	_, e := w.c.Write(h)
 	return e
 }
-func (w *WS) recv() ([]byte, error) {
-	_ = w.c.SetReadDeadline(time.Now().Add(12 * time.Second))
+func cdpResponseTimeout(method string) time.Duration {
+    // Initial study navigation may wait for a slow remote test server.
+    // Keep the original 12-second limit on every ordinary CDP command.
+    if method=="Page.navigate" {return 30*time.Second}
+    return 12*time.Second
+}
+func (w *WS) recvWithin(timeout time.Duration) ([]byte,error) {
+    _ = w.c.SetReadDeadline(time.Now().Add(timeout))
 	h := make([]byte, 2)
 	if _, e := io.ReadFull(w.c, h); e != nil {
 		return nil, e
@@ -283,6 +289,7 @@ func (w *WS) recv() ([]byte, error) {
 	}
 	return p, nil
 }
+func (w *WS) recv() ([]byte,error) {return w.recvWithin(12*time.Second)}
 func (w *WS) call(id int, method string, params any) (json.RawMessage, error) {
 	msg := map[string]any{"id": id, "method": method}
 	if params != nil {
@@ -293,7 +300,7 @@ func (w *WS) call(id int, method string, params any) (json.RawMessage, error) {
 		return nil, e
 	}
 	for {
-		p, e := w.recv()
+		p,e:=w.recvWithin(cdpResponseTimeout(method))
 		if e != nil {
 			return nil, e
 		}
