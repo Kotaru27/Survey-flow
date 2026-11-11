@@ -9,6 +9,10 @@ on:
       - 'go.mod'
       - '.gitignore'
       - '.github/workflows/windows-console-build.yml'
+      - 'README.md'
+      - 'SETUP.txt'
+      - 'QA_REPORT.md'
+      - 'QUESTION_TYPES.md'
 permissions:
   contents: read
 jobs:
@@ -126,6 +130,21 @@ jobs:
           Copy-Item -Recurse config release/config
           Copy-Item README.md, SETUP.txt, QUESTION_TYPES.md, QA_REPORT.md release/
           Compress-Archive -Path release/* -DestinationPath SurveyFlow-Recovery-Console.zip -Force
+      - name: Verify Windows QA recovery package
+        shell: pwsh
+        run: |
+          if (-not (Test-Path release/SurveyFlow.exe)) { throw 'Missing SurveyFlow.exe' }
+          foreach ($file in @('README.md', 'SETUP.txt', 'QUESTION_TYPES.md', 'QA_REPORT.md')) {
+            if (-not (Test-Path (Join-Path release $file))) { throw "Missing release document: $file" }
+          }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path SurveyFlow-Recovery-Console.zip).Path)
+          try {
+            $entries = @($archive.Entries | ForEach-Object FullName)
+            if (-not ($entries -contains 'SurveyFlow.exe')) { throw 'Recovery archive lacks SurveyFlow.exe' }
+            if ($entries -contains 'SurveyAutopilot.exe') { throw 'Recovery archive contains obsolete executable name' }
+          } finally { $archive.Dispose() }
+          Write-Host 'PASS archive includes renamed Windows executable and QA documentation'
       - uses: actions/upload-artifact@v4
         with:
           name: SurveyFlow-Recovery-Console
