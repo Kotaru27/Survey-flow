@@ -1,4 +1,4 @@
-# Survey Autopilot — Question-type support and operating rules
+# Survey Flow — Question-type support and operating rules
 
 Scope: automated interaction with **authorized survey QA/test links**. This matrix documents the implemented source paths, not an assertion that every survey platform/widget is compatible. Successful interaction requires the website to expose usable controls and to accept the resulting state.
 
