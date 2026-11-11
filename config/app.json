@@ -9,5 +9,6 @@
   "breathingMs": 60,
   "windowPauseMs": 1200,
   "incognito": true,
-  "browserMode": "auto"
+  "browserMode": "auto",
+  "replayVerifiedSets": false
 }
