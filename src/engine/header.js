@@ -520,6 +520,14 @@ const reopen=new Set((Array.isArray(MEM&&MEM.reopen)?MEM.reopen:[]).map(qkey));
 // Retain recorded preferences for compatibility with existing study memory.
 const preferMap=new Map();
 for(const k in ((MEM&&MEM.prefer)||{})){const q=qkey(k),o=qkey((MEM.prefer||{})[k]);if(q&&o)preferMap.set(q,o)}
+// Only explicitly opted-in, verified successful multi-choice snapshots are replayable.
+const verifiedSetMap=new Map();
+for(const q in ((MEM&&MEM.preferSets)||{})){
+ const vals=(MEM.preferSets||{})[q];
+ if(!Array.isArray(vals)||vals.length<2||vals.length>40)continue;
+ const labels=vals.map(qkey);
+ if(labels.every(Boolean)&&new Set(labels).size===labels.length){verifiedSetMap.set(qkey(q),labels)}
+}
 // Answer sets that already ended a run badly. pickedTrail is what this page has
 // answered so far, so a profile that is being rebuilt is caught while it is built.
 const bannedSets=Array.isArray(MEM&&MEM.banned)?MEM.banned.map(String):[];
