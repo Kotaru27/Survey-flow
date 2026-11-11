@@ -1,0 +1,50 @@
+name: Publish Survey Flow stable download
+
+on:
+  push:
+    branches:
+      - codex/qa-information-page-navigation-20261111
+    paths:
+      - .github/workflows/publish-surveyflow-download.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Upload verified portable ZIP to GitHub Releases
+    runs-on: ubuntu-latest
+    steps:
+      - name: Retrieve the passing Windows build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          gh run download 43002413902 -R Kotaru27/Survey-flow -n SurveyFlow-Recovery-Console -D artifacts
+          test -s artifacts/SurveyFlow-Recovery-Console.zip
+          unzip -t artifacts/SurveyFlow-Recovery-Console.zip
+          exe_sha="$(unzip -p artifacts/SurveyFlow-Recovery-Console.zip SurveyFlow.exe | sha256sum | cut -d ' ' -f 1)"
+          expected="ee1db2411c1eb651ba86557d2a47b9cdd666691b425db44de52eab238b4e9b3e"
+          test "$exe_sha" = "$expected" || { echo "EXE checksum mismatch"; exit 1; }
+          cp artifacts/SurveyFlow-Recovery-Console.zip SurveyFlow-Windows-Portable.zip
+          printf '%s  %s\n' "$(sha256sum SurveyFlow-Windows-Portable.zip | cut -d ' ' -f 1)" "SurveyFlow-Windows-Portable.zip" > SHA256SUMS.txt
+      - name: Publish publicly accessible long-lived release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v2026.11.11-qa-info-page-fix"
+          if gh release view "$tag" -R Kotaru27/Survey-flow >/dev/null 2>&1; then
+            echo "A release already exists; checking published asset instead of overwriting"
+          else
+            gh release create "$tag" SurveyFlow-Windows-Portable.zip SHA256SUMS.txt \
+              --repo Kotaru27/Survey-flow \
+              --target 7414a3ca9867ed68d701e7e02ac7e69e92d8f6d0 \
+              --title "Survey Flow - information-page navigation fix" \
+              --notes "Portable Windows Survey Flow QA console, built from verified commit 7414a3ca9867ed68d701e7e02ac7e69e92d8f6d0. Includes the information-page Next detection fix, scoped CDP navigation timeout, tests and QA documentation. Synthetic CI passed. Extract the ZIP, then run SurveyFlow.exe. Use authorized test surveys only." \
+              --latest=false
+          fi
+          gh release view "$tag" -R Kotaru27/Survey-flow --json url,assets --jq '{url:.url,assets:[.assets[].name]}'
+          gh release view "$tag" -R Kotaru27/Survey-flow --json assets --jq '.assets[].name' | grep -x 'SurveyFlow-Windows-Portable.zip'
