@@ -114,16 +114,16 @@ echo.
 
 if /i "!MODE!"=="pop" (
     if /i "!PYW!"=="python" (
-        start "Survey Flow" /min python "!TOOL!" launch "!LINK!" --completes !NUM! --mode pop --folder "!FOLDER!" --allow-live
+        start "Survey Flow" /min python "!TOOL!" launch "!LINK!" --completes !NUM! --mode pop --folder "!FOLDER!"
     ) else (
-        start "Survey Flow" !PYW! "!TOOL!" launch "!LINK!" --completes !NUM! --mode pop --folder "!FOLDER!" --allow-live
+        start "Survey Flow" !PYW! "!TOOL!" launch "!LINK!" --completes !NUM! --mode pop --folder "!FOLDER!"
     )
     echo A browser popup with the live test run should open now.
 ) else (
     if /i "!PYW!"=="python" (
-        start "Survey Flow" /min python "!TOOL!" launch "!LINK!" --completes !NUM! --mode nopop --folder "!FOLDER!" --allow-live
+        start "Survey Flow" /min python "!TOOL!" launch "!LINK!" --completes !NUM! --mode nopop --folder "!FOLDER!"
     ) else (
-        start "Survey Flow" !PYW! "!TOOL!" launch "!LINK!" --completes !NUM! --mode nopop --folder "!FOLDER!" --allow-live
+        start "Survey Flow" !PYW! "!TOOL!" launch "!LINK!" --completes !NUM! --mode nopop --folder "!FOLDER!"
     )
     echo Running in the background - no popup will be opened.
     echo A message will appear when the run finishes.
