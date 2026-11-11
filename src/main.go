@@ -910,9 +910,15 @@ var qualifiedPath = regexp.MustCompile(`(?i)(?:^|[/-])Qual\.html$`)
 var terminatedPath = regexp.MustCompile(`(?i)(?:^|[/-])Term\.html$`)
 
 func isQualifiedCompletionURL(raw string) bool {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	return err == nil && (u.Scheme == "http" || u.Scheme == "https") &&
-		u.Host != "" && qualifiedPath.MatchString(u.Path)
+ u,err:=url.Parse(strings.TrimSpace(raw))
+ return err==nil&&(u.Scheme=="http"||u.Scheme=="https")&&u.Host!=""&&qualifiedPath.MatchString(u.Path)
+}
+// An unrelated host cannot claim the original survey qualified.
+// Legitimate cross-origin end pages need explicit, study-verified support.
+func isQualifiedCompletionForSurvey(raw,surveyURL string) bool {
+ if !isQualifiedCompletionURL(raw){return false}
+ end,e1:=url.Parse(raw);start,e2:=url.Parse(surveyURL)
+ return e1==nil&&e2==nil&&strings.EqualFold(end.Scheme,start.Scheme)&&strings.EqualFold(end.Host,start.Host)
 }
 
 func isTerminatedURL(raw string) bool {
@@ -1499,6 +1505,21 @@ func main() {
 }
 
 // parseRunURL removes only the explicit trailing visibility marker.
+// Non-test-looking links require a deliberate confirmation before any network requests.
+var testLinkHint = regexp.MustCompile(`(?i)(^|[/._?&=-])test(s|ing)?([/._?&=-]|$)`)
+func explicitlyMarkedTestLink(raw string) bool {
+ u,err:=url.Parse(raw)
+ if err!=nil||u.Host==""{return false}
+ h:=strings.ToLower(u.Hostname())
+ return h=="localhost"||h=="127.0.0.1"||h=="::1"||strings.HasSuffix(h,".test")||testLinkHint.MatchString(raw)
+}
+func confirmAuthorizedTestLink(in *bufio.Reader, view *consoleRenderer, raw string) bool {
+ if explicitlyMarkedTestLink(raw) {return true}
+ view.event("QA CHECK",amber,"This URL has no recognizable test-link marker.")
+ view.prompt("AUTHORIZE TEST","Type TEST only for an approved QA/test survey; anything else cancels.")
+ response,err:=in.ReadString('\n')
+ return err==nil&&strings.TrimSpace(response)=="TEST"
+}
 func parseRunURL(input string) (string, bool, error) {
  raw := strings.TrimSpace(input)
  visible := strings.HasSuffix(raw, "---pop")
@@ -1545,19 +1566,28 @@ func runConsole(root string, cfg AppConfig) {
 		_, _ = in.ReadString('\n')
 		return
 	}
+	if !confirmAuthorizedTestLink(in,view,u) {
+ logLine(logFile,"QA link confirmation not provided; no run started.")
+ view.event("CANCELLED",amber,"Only approved survey QA links may be tested.")
+ return
+}
 	privateRules, privateErr := os.ReadFile(filepath.Join(root,"config","study-key.json"))
 	if privateErr != nil {
 		var embedded []byte
 		if path,e:=os.Executable();e==nil {embedded=readEmbeddedRedHerring(path)}
 		if len(embedded)>0 {view.detail("Built-in study checks",fmt.Sprintf("%d study-specific, %d shared",len(parseRedHerring(embedded,u)),len(parseEmbeddedGlobalChecks(embedded))))} else {view.detail("Study checks","No built-in or private configuration found")}
 	} else if !json.Valid(stripBOM(privateRules)) {
-		view.event("ERROR", rose, "Private study configuration is invalid; checks were not loaded.")
+		view.event("ERROR", rose, "Private study configuration is invalid; no run was started.")
+        logLine(logFile,"Invalid private study checks: refusing to continue without configured rules.")
+        return
 	} else {
 		view.detail("Study checks", fmt.Sprintf("%d study-specific, %d shared",len(parseRedHerring(privateRules,u)),len(parseEmbeddedGlobalChecks(privateRules))))
 	}
 	mem := openMemory(root, u)
 	if mem.readFailed {
-  view.event("ERROR", rose, "Study memory could not be read; see data/launcher.log.")
+  view.event("ERROR", rose, "Study memory could not be read; no run was started.")
+        logLine(logFile,"Study memory unreadable: refusing to run without learned safeguards.")
+        return
  } else if mem.Surveys[memoryFingerprint(u)] != nil {
   view.detail("Study memory", "Loaded automatically")
  } else {
@@ -1577,7 +1607,8 @@ func runConsole(root string, cfg AppConfig) {
  view.startBatch(total, visible)
 	batch := runBatch(root, u, total, cfg, mem, logFile, nil)
 	view.finish(batch)
-	view.prompt("ALL DONE", "Press Enter to close the console. Your reports are saved.")
+	if batch.StatusCounts["report_write_error"]>0 {view.event("REPORT ERROR",rose,"Some QA reports could not be saved; check console log.")}
+ view.prompt("ALL DONE","Press Enter to close. Check reports and log for results.")
 	_, _ = in.ReadString('\n')
 }
 
@@ -1631,7 +1662,7 @@ func runBatch(root, u string, total int, cfg AppConfig, mem *MemoryStore, logFil
 			if lerr != nil {
 				report.Errors = append(report.Errors, lerr.Error())
 			}
-			saveReport(root, report)
+			saveRunOutcome(root,&report,logFile)
 			saveReportAs(root, runReportName(runNo, total), report)
 			batch.Runs = append(batch.Runs, BatchRun{Run: runNo, Window: windowNo, Status: report.Status, Report: runReportName(runNo, total), Errors: report.Errors})
 			batch.StatusCounts[report.Status]++
@@ -1738,7 +1769,7 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 		logLine(logFile, "Could not mint a test ID: %v", reentryErr)
 		report := RunReport{Build: buildID, StartedAt: time.Now().Format(time.RFC3339), Run: runNo, URL: u, Status: "reentry_id_error", Persona: persona, ReentryID: "", State: AnswerState{Values: map[string]any{}, SelectedLabels: []string{}}}
 		report.Errors = append(report.Errors, reentryErr.Error())
-		saveReport(root, report)
+		saveRunOutcome(root,&report,logFile)
 		return report
 	}
 	persona.ReentryID = reentryID
@@ -1770,7 +1801,7 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 		logLine(logFile, "No tab available for run %d", runNo)
 		report.Status = "cdp_error"
 		report.Errors = append(report.Errors, "no tab available")
-		saveReport(root, report)
+		saveRunOutcome(root,&report,logFile)
 		return report
 	}
 	if sess.ws != nil {
@@ -1783,7 +1814,7 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 		logLine(logFile, "WebSocket connection failed: %v", e)
 		report.Status = "cdp_error"
 		report.Errors = append(report.Errors, e.Error())
-		saveReport(root, report)
+		saveRunOutcome(root,&report,logFile)
 		return report
 	}
 	sess.ws = w
@@ -1806,7 +1837,7 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 		logLine(logFile, "Navigation failed: %v", e)
 		report.Status = "navigation_error"
 		report.Errors = append(report.Errors, e.Error())
-		saveReport(root, report)
+		saveRunOutcome(root,&report,logFile)
 		return report
 	}
 	logLine(logFile, "Survey navigation requested: %s", u)
@@ -2118,7 +2149,7 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 				// a page worth staying on.
 				if where, we := js(w, 1002+step*10, "String(location.href)"); we == nil {
 					if here := strings.Trim(str(where), `"`); here != "" && !browserDeadPage(here) {
-						if isQualifiedCompletionURL(here) {
+						if isQualifiedCompletionForSurvey(here,u) {
 							report.Status = "completed"
 							logLine(logFile, "Step %d: verified qualification on %s after the page evaluation failed.", step, here)
 							goto END_RUN
@@ -2406,7 +2437,7 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 			capture(step)
 		}
 
-		if boolv(m["completion"]) && !boolv(m["returningSession"]) && !boolv(m["termination"]) && isQualifiedCompletionURL(str(m["url"])) {
+		if boolv(m["completion"]) && !boolv(m["returningSession"]) && !boolv(m["termination"]) && isQualifiedCompletionForSurvey(str(m["url"]),u) {
 			report.Status = "completed"
 			break
 		}
@@ -2427,7 +2458,7 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 				regexp.MustCompile(`unfortunately|did not qualify|not qualify|does not correspond|screened out|not eligible`).MatchString(low) {
 				// Let the ordinary screenout path below record the rejection.
 				m["termination"] = true
-			} else if isQualifiedCompletionURL(str(m["url"])) && !boolv(m["returningSession"]) {
+			} else if isQualifiedCompletionForSurvey(str(m["url"]),u) && !boolv(m["returningSession"]) {
 				report.Status = "completed"
 				logLine(logFile, "Step %d: verified survey qualification URL %s.", step, str(m["url"]))
 				break
@@ -2915,7 +2946,7 @@ END_RUN:
 	}
 	report.AvoidRules = mem.avoidCount(memFP)
 	report.FinishedAt = time.Now().Format(time.RFC3339)
-	saveReport(root, report)
+	saveRunOutcome(root,&report,logFile)
 	logLine(logFile, "Status: %s", report.Status)
 	logLine(logFile, "Report: %s", filepath.Join(root, "reports", "run-report.json"))
 	return report
@@ -3033,7 +3064,7 @@ func widgetModel(kind string) bool {
 // fatalStatus reports failures that make every further run pointless.
 func fatalStatus(s string) bool {
 	switch s {
-	case "browser_missing", "port_error", "browser_error", "reentry_id_error", "needs_human", "needs_review", "unverified_exit", "unreadable_page", "validation_failure", "stalled", "max_steps_or_manual_intervention":
+	case "browser_missing", "port_error", "browser_error", "reentry_id_error", "needs_human", "needs_review", "unverified_exit", "unreadable_page", "validation_failure", "stalled", "max_steps_or_manual_intervention", "report_write_error":
 		return true
 	}
 	return false
@@ -3049,13 +3080,18 @@ func confirmedPageProgress(previousOpen, currentOpen, previousAnswered, currentA
 // because a report that the next batch overwrites is not evidence of anything: comparing
 // what one run chose against the next is the only way to see that the answers differ.
 var batchSeq int
-
-func runReportName(runNo, total int) string {
-	if total <= 1 {
-		return fmt.Sprintf("run-report-%03d.json", batchSeq)
-	}
-	return fmt.Sprintf("run-b%03d-%03d.json", batchSeq, runNo)
+// Random per-process namespace prevents report collisions when the batch counter resets.
+var batchNamespace=newBatchNamespace()
+func newBatchNamespace() string {
+ var b [12]byte
+ if _,err:=rand.Read(b[:]);err==nil{return base64.RawURLEncoding.EncodeToString(b[:])}
+ return strconv.FormatInt(time.Now().UnixNano(),36)
 }
+func reportNameFor(namespace string,batch,runNo,total int) string {
+ if total<=1{return fmt.Sprintf("run-report-%s-%03d.json",namespace,batch)}
+ return fmt.Sprintf("run-b%s-%03d-%03d.json",namespace,batch,runNo)
+}
+func runReportName(runNo,total int) string {return reportNameFor(batchNamespace,batchSeq,runNo,total)}
 
 func killTree(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
@@ -3164,21 +3200,28 @@ func sameProgress(a, b StepReport) bool {
 // Serializes report file writes made by concurrent workers in this process.
 var reportWriteMu sync.Mutex
 
-func saveReport(root string, r RunReport) {
-	saveReportAs(root, "run-report.json", r)
+func saveReport(root string,r RunReport) error {return saveReportAs(root,"run-report.json",r)}
+func saveRunOutcome(root string,report *RunReport,logFile *os.File) {
+ if err:=saveReport(root,*report);err!=nil {
+  report.Status="report_write_error"
+  report.Errors=append(report.Errors,"QA report could not be saved: "+err.Error())
+  logLine(logFile,"ERROR: QA report could not be saved: %v",err)
+ }
 }
-func saveReportAs(root, name string, r RunReport) {
-	reportWriteMu.Lock()
-	defer reportWriteMu.Unlock()
-	if r.FinishedAt == "" {
-		r.FinishedAt = time.Now().Format(time.RFC3339)
-	}
-	b, _ := json.MarshalIndent(r, "", "  ")
-	_ = os.WriteFile(filepath.Join(root, "reports", name), b, 0644)
+func saveReportAs(root,name string,r RunReport) error {
+ reportWriteMu.Lock()
+ defer reportWriteMu.Unlock()
+ if r.FinishedAt==""{r.FinishedAt=time.Now().Format(time.RFC3339)}
+ b,err:=json.MarshalIndent(r,"","  ")
+ if err!=nil{return fmt.Errorf("marshal %s: %w",name,err)}
+ if err=os.WriteFile(filepath.Join(root,"reports",name),b,0644);err!=nil{return fmt.Errorf("write %s: %w",name,err)}
+ return nil
 }
-func saveBatchReport(root string, b BatchReport) {
-	reportWriteMu.Lock()
-	defer reportWriteMu.Unlock()
-	data, _ := json.MarshalIndent(b, "", "  ")
-	_ = os.WriteFile(filepath.Join(root, "reports", "batch-report.json"), data, 0644)
+func saveBatchReport(root string,b BatchReport) error {
+ reportWriteMu.Lock()
+ defer reportWriteMu.Unlock()
+ data,err:=json.MarshalIndent(b,"","  ")
+ if err!=nil{return fmt.Errorf("marshal batch report: %w",err)}
+ if err=os.WriteFile(filepath.Join(root,"reports","batch-report.json"),data,0644);err!=nil{return fmt.Errorf("write batch report: %w",err)}
+ return nil
 }
