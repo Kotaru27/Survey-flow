@@ -1,20 +1,28 @@
-SURVEY FLOW  |  QA CONSOLE
-=========================================
+SURVEY FLOW | WINDOWS QA CONSOLE
+================================
 
-1. Extract this ZIP to a folder you can write to.
-2. Double-click SurveyFlow.exe.
-3. Paste your authorized QA survey URL.
-4. Select the number of completed test runs (Enter = 1).
-5. Watch the live steps, warnings and results in the styled console.
-6. Review data\launcher.log and reports\ for full diagnostics.
+1. Extract SurveyFlow-Recovery-Console to a writable folder.
+2. Double-click SurveyFlow.exe (Windows 10+ recommended).
+3. Paste the URL of an AUTHORIZED QA / TEST survey.
+   If the URL has no test marker, type TEST only when the link
+   has been independently approved for survey QA. Never use live fielding.
+4. Enter the number of confirmed QA qualifications required (1-50).
+5. Follow the console status and review results in:
+     reports\\run-report.json
+     reports\\batch-report.json
+     data\\launcher.log
+   Previous runs and batches have unique archived JSON names.
+6. The console stops on unresolved mandatory questions, unverified
+   redirects, corrupt saved memory or unsaved QA evidence.
 
-The application is CONSOLE ONLY. It opens a browser for authorized survey
-QA; there is no embedded GUI or WebView2 dependency.
+OPTIONAL: config\\app.json includes "replayVerifiedSets": false.
+Enable only for exact reproduction of an already verified multi-select
+QA answer path; leaving it false preserves answer variety.
 
-Windows 10+ is recommended for full ANSI color and box drawing. If the
-terminal doesn't support the color mode, the output remains readable.
+A successful test completion requires Qual.html on the original survey
+origin. Third-party redirects remain unverified without approved support.
 
-IMPORTANT: Completion is only counted on a qualifying Qual.html URL. Missing
-answers result in a needs_review stop; don't confuse that with a success.
+The release contains no universal ranking/hotspot solver, CAPTCHA
+bypass, or support guarantee for every survey's custom widgets.
 
-MORE INFO: README.md, QUESTION_TYPES.md, QA_REPORT.md
+FOR DEVELOPERS: inspect README.md, QUESTION_TYPES.md and QA_REPORT.md.
