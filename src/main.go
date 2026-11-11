@@ -116,7 +116,7 @@ type StepReport struct {
 	Accordion    map[string]any `json:"accordion,omitempty"`
 	Instructions map[string]any `json:"instructions,omitempty"`
 }
-const buildID = "cdp-startup-recovery-20261111"
+const buildID = "fast-nav-text-readiness-20261111"
 
 type RunReport struct {
 	Build string `json:"build"`
