@@ -241,9 +241,10 @@ func (w *WS) sendText(s string) error {
 	return e
 }
 func cdpResponseTimeout(method string) time.Duration {
-    // Initial study navigation may wait for a slow remote test server.
+    // Do not spend 30 seconds waiting for a lost navigation acknowledgement.
+    // The startup recovery rechecks the original tab and retries at most once.
     // Keep the original 12-second limit on every ordinary CDP command.
-    if method=="Page.navigate" {return 30*time.Second}
+    if method=="Page.navigate" {return 5*time.Second}
     return 12*time.Second
 }
 func (w *WS) recvWithin(timeout time.Duration) ([]byte,error) {
