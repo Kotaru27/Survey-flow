@@ -68,12 +68,17 @@ func runParallelBatch(root,u string,total,workers int,cfg AppConfig,mem *MemoryS
   delete(current,x.worker)
   r:=x.report
   if r.Status=="completed"{batch.Completed++};batch.StatusCounts[r.Status]++
-  name:=runReportName(x.run,total);saveReportAs(root,name,r)
+  name:=runReportName(x.run,total)
+   if err:=saveReportAs(root,name,r);err!=nil {
+    r.Status="report_write_error"
+    r.Errors=append(r.Errors,"Archived QA report could not be saved: "+err.Error())
+    logLine(logFile,"ERROR: worker %d QA report could not be saved: %v",x.worker,err)
+   }
   batch.Runs=append(batch.Runs,BatchRun{Run:x.run,Worker:x.worker,StartedAt:x.started.Format(time.RFC3339Nano),FinishedAt:x.finished.Format(time.RFC3339Nano),Status:r.Status,ReentryID:r.ReentryID,Steps:r.Steps,DurationMS:x.finished.Sub(x.started).Milliseconds(),Errors:r.Errors,Learned:r.Learned,Report:name})
   if consoleUI!=nil {consoleUI.workerFinished(x.worker,r.Status,batch.Completed,total)}
-  if r.Status=="browser_missing"||r.Status=="port_error" {next=capAttempts+1}
+  if fatalStatus(r.Status) {stopping=true; logLine(logFile,"Fatal worker status %s: no new attempts will start; allowing active tests to finish.",r.Status)}
  }
- batch.FinishedAt=time.Now().Format(time.RFC3339);batch.Windows=len(batch.Runs);batch.AvoidRules=mem.avoidCount(memoryFingerprint(u));saveBatchReport(root,batch)
+ batch.FinishedAt=time.Now().Format(time.RFC3339);batch.Windows=len(batch.Runs);batch.AvoidRules=mem.avoidCount(memoryFingerprint(u));if err:=saveBatchReport(root,batch);err!=nil{batch.StatusCounts["report_write_error"]++;logLine(logFile,"ERROR: batch report could not be saved: %v",err)}
  logLine(logFile,"Experimental batch finished: %d of %d qualifications, %d attempts",batch.Completed,total,len(batch.Runs))
  return batch
 }
