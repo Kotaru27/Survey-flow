@@ -107,6 +107,8 @@ type StepReport struct {
 	// NeedsHuman is set when the page is asking a person to prove they are one, which
 	// no amount of answering will get past.
 	NeedsHuman bool `json:"needsHuman,omitempty"`
+	NextAvailable bool `json:"nextAvailable"`
+	TerminationEvidence string `json:"terminationEvidence,omitempty"`
 	// Interaction is the model dispatch.js read the page as - carousel_grid,
 	// sequential_open_text, emo_resonance or timeline - with how far through it the
 	// step got. It is what shows which adapter owned the page.
@@ -2330,6 +2332,8 @@ func runCompleteWithProgress(root, u string, persona Persona, mem *MemoryStore, 
 		sr := StepReport{Step: step, Time: time.Now().Format(time.RFC3339), URL: str(m["url"]), Title: str(m["title"]), Question: str(m["question"]), QuestionType: str(m["questionType"]), Action: str(m["action"]), Validation: toStrings(m["validation"])}
 		sr.DurationMS = time.Since(stepStarted).Milliseconds()
 		sr.NeedsHuman = boolv(m["needsHuman"])
+        sr.NextAvailable = boolv(m["nextAvailable"])
+        sr.TerminationEvidence = str(m["terminationEvidence"])
 		if c, ok := m["controls"].(map[string]any); ok && len(c) > 0 {
 			sr.Controls = map[string]int{}
 			for _, k := range []string{"radios", "roleRadios", "checkboxes", "roleCheckboxes", "selects", "texts", "clickables"} {
