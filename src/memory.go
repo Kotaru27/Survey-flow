@@ -152,6 +152,8 @@ type SurveyMemory struct {
 	Completed int                   `json:"completed,omitempty"`
 	Failed    int                   `json:"failed,omitempty"`
 	Good      map[string]*KnownGood `json:"good,omitempty"`
+	// Verified multi-select snapshots from qualification runs; never inferred from clicks.
+	GoodSets  map[string][]string  `json:"goodSets,omitempty"`
 	Avoid     []AvoidRule           `json:"avoid"`
 	// Rejected holds the fingerprints of the answer sets that ended a run badly, so
 	// the engine can steer off a profile it has already tried instead of rebuilding it.
@@ -253,10 +255,14 @@ func (s *MemoryStore) save() error {
     good[q] = &KnownGood{Option:g.Best, Best:g.Best, Wins:g.Wins}
    }
   }
+  sets:=map[string][]string{}
+  for q,labels:=range m.GoodSets {
+   if len(labels)>=2 && len(labels)<=40 {sets[q]=append([]string(nil),labels...)}
+  }
   avoid := []AvoidRule{}
   for _, rule := range m.Avoid { if rule.Reason == "screenout-suspect" { avoid = append(avoid, rule) } }
   if m.Completed < 1 && len(avoid) == 0 { continue }
-  clean[key] = &SurveyMemory{Key:key, Updated:m.Updated, Completed:m.Completed, Good:good, Avoid:avoid}
+  clean[key] = &SurveyMemory{Key:key, Updated:m.Updated, Completed:m.Completed, Good:good, GoodSets:sets, Avoid:avoid}
  }
  if len(clean)==0 { return nil }
  b, err := json.MarshalIndent(struct{Surveys map[string]*SurveyMemory `json:"surveys"`}{clean}, "", "  ")
@@ -548,9 +554,9 @@ func replayablePairs(pairs []answerPair) []answerPair {
 // time; a set that ended the run badly is remembered as a profile never to rebuild,
 // and its answers are avoided within the caller's budget.
 func (s *MemoryStore) noteAttempt(fp string, pairs []answerPair, status string) (learned []AvoidRule, completed bool) {
-	if fp == "" || len(pairs) == 0 {
-		return nil, false
-	}
+	if fp == "" || (len(pairs) == 0 && !strings.EqualFold(strings.TrimSpace(status),"completed")) {
+        return nil, false
+    }
 	now := time.Now().Format(time.RFC3339)
 	hash := comboFingerprint(pairs)
 	trail := comboTrail(pairs)
@@ -786,6 +792,48 @@ func (s *MemoryStore) preferFor(fp string) map[string]string {
 		}
 	}
 	return out
+}
+
+// noteCompletedSets saves only verified checked-state snapshots from a completed
+// authorized QA run. An empty or unverified set must never overwrite known good data.
+func (s *MemoryStore) noteCompletedSets(fp string,sets map[string][]string) int {
+ if fp==""||len(sets)==0{return 0}
+ s.mu.Lock()
+ defer s.mu.Unlock()
+ m:=s.Surveys[fp]
+ if m==nil||m.Completed==0{return 0}
+ if m.GoodSets==nil{m.GoodSets=map[string][]string{}}
+ stored:=0
+ for q,labels:=range sets {
+  key:=strings.ToLower(strings.TrimSpace(q))
+  if key==""||len(labels)<2||len(labels)>40{continue}
+  seen:=map[string]bool{}
+  safe:=make([]string,0,len(labels))
+  for _,v:=range labels {
+   value:=strings.TrimSpace(v)
+   k:=strings.ToLower(value)
+   if value==""||len(value)>=200||seen[k]{safe=nil;break}
+   seen[k]=true
+   safe=append(safe,value)
+  }
+  if len(safe)!=len(labels){continue}
+  m.GoodSets[key]=safe
+  stored++
+ }
+ return stored
+}
+
+// preferSetsFor returns independent copies so workers never share mutable slices.
+func (s *MemoryStore) preferSetsFor(fp string) map[string][]string {
+ s.mu.Lock()
+ defer s.mu.Unlock()
+ out:=map[string][]string{}
+ m:=s.Surveys[fp]
+ if m==nil||m.Completed==0{return out}
+ for q,values:=range m.GoodSets {
+  if len(values)>=2&&len(values)<=40{out[q]=append([]string(nil),values...)}
+ }
+ return out
 }
 
 // rejectedCombos is the list of answer sets that ended a run badly.
