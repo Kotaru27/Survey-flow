@@ -8,7 +8,7 @@ import (
 )
 
 func TestQANavigationTimeoutIsScoped(t *testing.T) {
- if got:=cdpResponseTimeout("Page.navigate");got!=30*time.Second{t.Fatalf("navigation deadline %v",got)}
+ if got:=cdpResponseTimeout("Page.navigate");got!=5*time.Second{t.Fatalf("navigation deadline %v",got)}
  for _,method:=range []string{"Runtime.enable","Page.enable","Runtime.evaluate","Page.captureScreenshot"}{
   if got:=cdpResponseTimeout(method);got!=12*time.Second{t.Errorf("%s timeout changed: %v",method,got)}
  }
