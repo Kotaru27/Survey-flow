@@ -53,12 +53,16 @@ async function renderedNow(){
   // race because the visible-control check at the top runs on every pass.
   const proceedNames=/^(?:next|continue|start|begin|proceed|submit|finish|go to next|next page|go|>|>>|›|»|→)$/i;
   const visibleProceed=[...document.querySelectorAll('button,a,input[type="submit"],input[type="button"],[role="button"]')].some(e=>
-    shown(e)&&!e.disabled&&[e.innerText,e.value,e.getAttribute('aria-label'),e.getAttribute('title')]
+    shown(e)&&!e.disabled&&[e.innerText,e.value,e.getAttribute?.('aria-label'),e.getAttribute?.('title')]
       .some(v=>proceedNames.test(norm(v||''))));
-  const busy=[...document.querySelectorAll('[aria-busy="true"],[data-loading="true"],[role="progressbar"]')].some(shown);
-  const infoOnlyReady=questionExpected&&!pendingStructure&&!busy&&visibleProceed;
+  const busy=[...document.querySelectorAll('[aria-busy="true"],[data-loading="true"],[role="progressbar"]')]
+    .some(e=>shown(e)&&(e.getAttribute?.('aria-busy')==='true'||e.getAttribute?.('data-loading')==='true'||e.getAttribute?.('role')==='progressbar'));
+  // Preserve the existing 1.5s readiness rule for future-only descriptions.
+  // A current-sounding, answer-free prompt is a separate case: its 3s grace
+  // requires a real Next and no evidence that question controls are loading.
+  const infoOnlyReady=futureOnly||(questionExpected&&!pendingStructure&&!busy&&visibleProceed);
   if(infoOnlyReady){
-   const now=Date.now(),key=prompt.slice(0,700)+'|'+location.href;
+   const now=Date.now(),key=prompt.slice(0,700);
    if(!window.__apInfoWait||window.__apInfoWait.key!==key)window.__apInfoWait={key,since:now};
    const grace=futureOnly?1500:3000;
    if(now-window.__apInfoWait.since>=grace){window.__apRenderPending=false;return true}
